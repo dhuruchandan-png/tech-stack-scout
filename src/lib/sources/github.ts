@@ -119,6 +119,24 @@ query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
   }
 }`;
 
+/** Fallback for very large orgs: no per-repo commit history or release lookups, so it is far cheaper. */
+const REPOS_QUERY_LIGHT = `
+query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
+  rateLimit { remaining resetAt }
+  repositoryOwner(login:$login) {
+    login avatarUrl url
+    repositories(first:40, privacy:PUBLIC, orderBy:{field:PUSHED_AT, direction:DESC}) {
+      totalCount
+      nodes {
+        name url description isFork isArchived pushedAt stargazerCount
+        primaryLanguage { name }
+        languages(first:6, orderBy:{field:SIZE, direction:DESC}) { edges { size node { name color } } }
+        defaultBranchRef { name }
+      }
+    }
+  }
+}`;
+
 type GqlRepo = {
   name: string; url: string; description: string | null; isFork: boolean; isArchived: boolean; pushedAt: string | null;
   stargazerCount: number; primaryLanguage: { name: string } | null;
@@ -190,10 +208,18 @@ async function fetchRaw(owner: string, repo: string, branch: string, path: strin
 
 /** Step 5 (GitHub): repos, language bytes, commit counts, 13-week series, and infra files for the 15 most recent active repos. */
 export async function fetchGithub(org: string, now = Date.now()): Promise<GithubData> {
-  const data = await gql<{
+  type RepoData = {
     rateLimit: { remaining: number; resetAt: string };
     repositoryOwner: { login: string; avatarUrl: string; url: string; repositories: { totalCount: number; nodes: (GqlRepo | null)[] } } | null;
-  }>(REPOS_QUERY, { login: org, s30: new Date(now - 30 * DAY).toISOString(), s90: new Date(now - 90 * DAY).toISOString() });
+  };
+  const vars = { login: org, s30: new Date(now - 30 * DAY).toISOString(), s90: new Date(now - 90 * DAY).toISOString() };
+  let data: RepoData;
+  try {
+    data = await gql<RepoData>(REPOS_QUERY, vars);
+  } catch (e) {
+    if (e instanceof RateLimitError) throw e;
+    data = await gql<RepoData>(REPOS_QUERY_LIGHT, vars); // heavy orgs: fall back to the lighter page
+  }
 
   if (data.rateLimit.remaining < 50) throw new RateLimitError(data.rateLimit.resetAt);
   const owner = data.repositoryOwner;

@@ -99,6 +99,10 @@ export function keyNouns(text: string, company: string): string[] {
 function grounded(noun: string, hay: string, hayStems: Set<string>): boolean {
   const n = noun.toLowerCase();
   if (hay.includes(n)) return true;
+  // possessives ("Arora's") and plural acronyms ("SDKs") match their base form
+  const base = n.replace(/['’]s$/, "");
+  if (base !== n && hay.includes(base)) return true;
+  if (/^[A-Z]{2,}s$/.test(noun) && hay.includes(n.slice(0, -1))) return true;
   // Compounds ("Go-first", "gRPC-heavy", "payments-service") are grounded if any meaningful part is.
   const parts = n.split(/[-_./]/).filter((p) => p.length >= 2 && !/^\d+$/.test(p));
   if (parts.length > 1 && parts.some((p) => hay.includes(p) || hayStems.has(stem(p)))) return true;

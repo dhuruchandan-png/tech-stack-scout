@@ -102,6 +102,10 @@ describe("checkTalkingPoint", () => {
   it("does not require talking points to name a specific thing (only the opener must)", () => {
     expect(checkTalkingPoint("They are hiring more infrastructure engineers this quarter.", ["E2"], ctx).reasons.some((r) => r.startsWith("Names nothing"))).toBe(false);
   });
+  it("matches possessives and plural acronyms to their base form in the evidence", () => {
+    const c4 = { ...ctx, evidenceText: { ...ctx.evidenceText, E1: "Talk by Priya Arora on our SDK and platform plugins" } };
+    expect(checkTalkingPoint("Priya Arora's SDKs and plugins shape their platform.", ["E1"], c4).ok).toBe(true);
+  });
   it("treats 4500 and 4,500 as the same number", () => {
     const c3 = { ...ctx, evidenceText: { ...ctx.evidenceText, E1: "4,500 stars across public repos" } };
     expect(checkTalkingPoint("Their repos hold 4500 stars in total.", ["E1"], c3).ok).toBe(true);

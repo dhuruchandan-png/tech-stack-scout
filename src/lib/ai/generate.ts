@@ -1,4 +1,4 @@
-import { checkEmail, checkOpener, checkSummary, checkTalkingPoint, citedIds, stripCites, type CheckContext } from "./check";
+import { checkEmail, checkOpener, checkSummary, checkTalkingPoint, citedIds, sanitizeGenerated, stripCites, type CheckContext } from "./check";
 import { costOf, generateJson, MODEL, type Usage } from "./gemini";
 import {
   BRIEF_SCHEMA, BRIEF_SYSTEM, briefPrompt, EMAIL_SCHEMA, EMAIL_SYSTEM, emailPrompt, QA_SCHEMA, QA_SYSTEM, qaPrompt,
@@ -19,15 +19,15 @@ const validIds = (ids: unknown, ctx: CheckContext): string[] =>
 
 function normalizeBrief(o: BriefOutput): BriefOutput {
   return {
-    summary_p1: (o.summary_p1 ?? "").trim(),
-    summary_p2: (o.summary_p2 ?? "").trim(),
+    summary_p1: sanitizeGenerated((o.summary_p1 ?? "").trim()),
+    summary_p2: sanitizeGenerated((o.summary_p2 ?? "").trim()),
     opener: {
-      text: stripCites(o.opener?.text ?? ""),
+      text: sanitizeGenerated(stripCites(o.opener?.text ?? "")),
       evidence_ids: validIds(o.opener?.evidence_ids, null as never),
       hook_type: o.opener?.hook_type ?? "repo",
     },
     talking_points: (o.talking_points ?? []).slice(0, 3).map((t) => ({
-      text: stripCites(t.text ?? ""),
+      text: sanitizeGenerated(stripCites(t.text ?? "")),
       evidence_ids: validIds(t.evidence_ids, null as never),
     })),
     unknowns: (o.unknowns ?? []).map(String),
@@ -94,8 +94,8 @@ export async function generateEmail(
     const r = await generateJson<EmailOutput>({ system: EMAIL_SYSTEM, prompt: emailPrompt({ ...args, retryReasons: retry }), schema: EMAIL_SCHEMA });
     usage = sumUsage(usage, r.usage);
     const email: EmailOutput = {
-      subject: (r.data.subject ?? "").trim(),
-      body: (r.data.body ?? "").replace(/[ \t]*\[E\d+(?:\s*,\s*E\d+)*\]/g, "").replace(/\s+Nikhil\s*$/, "\n\nNikhil").trim(),
+      subject: sanitizeGenerated((r.data.subject ?? "").trim()),
+      body: sanitizeGenerated(r.data.body ?? "").replace(/[ \t]*\[E\d+(?:\s*,\s*E\d+)*\]/g, "").replace(/\s+Nikhil\s*$/, "\n\nNikhil").trim(),
       evidence_ids: validIds(r.data.evidence_ids, ctx),
     };
     return { email, check: checkEmail(email, ctx) };

@@ -1,11 +1,13 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { queueRun, type Trigger } from "@/lib/pipeline";
+import { reapStuckRuns } from "@/lib/queries";
 import { mapLimit } from "@/lib/util";
 
 /** Create queued runs for every active company (one run per company, so each fits in its own request). */
 export async function enqueueAll(trigger: Trigger, onlyIds?: number[]): Promise<{ companyId: number; runId: number }[]> {
   const db = getDb();
+  await reapStuckRuns().catch(() => {});
   let cos = await db.select({ id: schema.companies.id }).from(schema.companies).where(eq(schema.companies.active, true));
   if (onlyIds?.length) cos = cos.filter((c) => onlyIds.includes(c.id));
   const out: { companyId: number; runId: number }[] = [];

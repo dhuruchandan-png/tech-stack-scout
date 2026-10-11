@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkEmail, checkOpener, checkSummary, checkTalkingPoint, citedIds, keyNouns, stem, stripCites, type CheckContext } from "@/lib/ai/check";
+import { checkEmail, checkOpener, checkSummary, checkTalkingPoint, citedIds, keyNouns, sanitizeGenerated, stem, stripCites, type CheckContext } from "@/lib/ai/check";
 
 const ctx: CheckContext = {
   company: "Northwind Pay",
@@ -71,6 +71,12 @@ describe("checkOpener", () => {
     expect(checkOpener(t, ["E1", "E3"], ctx).reasons.some((x) => /spelled exactly/.test(x))).toBe(true);
   });
 
+  it("does not flag the company name inside repo names, URLs or handles", () => {
+    const c2 = { ...ctx, company: "Stripe", evidenceText: { ...ctx.evidenceText, E1: "stripe-go repo and stripe.com docs, Go monorepo CI from 22 to 9 minutes, 27 services" } };
+    const t = "Your stripe-go repo and the Go monorepo CI from 22 to 9 minutes stood out, and with 27 gRPC services we help teams get faster local dev.";
+    expect(checkOpener(t, ["E1", "E3"], c2).reasons.some((x) => /spelled exactly/.test(x))).toBe(false);
+  });
+
   it("fails on two sentences", () => {
     const t = "Your Go monorepo CI post from 22 to 9 minutes stood out. With 27 gRPC services we help teams get that speed in local dev and testing.";
     expect(checkOpener(t, ["E1", "E3"], ctx).reasons).toContain("Opener must be one sentence");
@@ -86,6 +92,9 @@ describe("checkTalkingPoint", () => {
   it("passes a grounded short point and fails a missing id", () => {
     expect(checkTalkingPoint("Three Platform Engineer roles mention Kubernetes tooling.", ["E2"], ctx).ok).toBe(true);
     expect(checkTalkingPoint("Three Platform Engineer roles mention Kubernetes tooling.", ["E7"], ctx).ok).toBe(false);
+  });
+  it("does not require talking points to name a specific thing (only the opener must)", () => {
+    expect(checkTalkingPoint("They are hiring more infrastructure engineers this quarter.", ["E2"], ctx).reasons.some((r) => r.startsWith("Names nothing"))).toBe(false);
   });
   it("fails when it is long", () => {
     expect(checkTalkingPoint(Array(45).fill("word").join(" "), ["E1"], ctx).reasons).toContain("Talking point is longer than 40 words");
@@ -141,9 +150,18 @@ describe("helpers", () => {
     expect(stem("deploying")).toBe(stem("deploy"));
   });
   it("extracts key nouns and skips sentence starts, the company and stop words", () => {
-    const n = keyNouns("Your Kafka pipeline at Northwind Pay moves 27 events to payments-service.", "Northwind Pay");
-    expect(n).toEqual(expect.arrayContaining(["Kafka", "27", "payments-service"]));
+    const n = keyNouns("Your Kafka pipeline at Northwind Pay moves 27 events to payments_service.", "Northwind Pay");
+    expect(n).toEqual(expect.arrayContaining(["Kafka", "27", "payments_service"]));
     expect(n).not.toContain("Your");
     expect(n).not.toContain("Northwind");
+  });
+  it("treats ordinary hyphenated words as plain English, but capitalised compounds as claims", () => {
+    const n = keyNouns("Their front-end team ships a Go-first, open-source stack.", "Acme");
+    expect(n).toContain("Go-first");
+    expect(n).not.toContain("front-end");
+    expect(n).not.toContain("open-source");
+  });
+  it("sanitises the banned buzzword deterministically", () => {
+    expect(sanitizeGenerated("We leverage Go and are leveraging EKS. Leverage matters.")).toBe("We use Go and are using EKS. Use matters.");
   });
 });

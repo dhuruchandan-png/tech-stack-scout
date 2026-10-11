@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import { Activity, CalendarDays, Clock, ListChecks, Mail, Moon, Plus, Radar as RadarIcon, RefreshCw, Search, Settings, Lock } from "lucide-react";
+import { Activity, BookOpen, CalendarDays, Clock, ListChecks, Mail, Moon, Plus, Radar as RadarIcon, RefreshCw, Search, Settings, Lock } from "lucide-react";
 import { useRuns } from "@/components/run/RunConsole";
 
 type C = { id: number; name: string; domain: string };
@@ -35,7 +35,7 @@ export function CommandPalette({ companies, admin }: { companies: C[]; admin: bo
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (chord && Date.now() - chord < 900) {
-        const map: Record<string, string> = { t: "/", w: "/accounts", o: "/outreach", r: "/radar", u: "/runs" };
+        const map: Record<string, string> = { t: "/", w: "/accounts", o: "/outreach", r: "/radar", u: "/runs", h: "/how-it-works" };
         if (map[k]) { e.preventDefault(); router.push(map[k]); }
         chord = null;
         return;
@@ -78,6 +78,7 @@ export function CommandPalette({ companies, admin }: { companies: C[]; admin: bo
             <Command.Item value="outreach drafts" className={item} onSelect={() => go("/outreach")}><Mail className="h-4 w-4" /> Outreach<span className="kbd ml-auto">G O</span></Command.Item>
             <Command.Item value="radar" className={item} onSelect={() => go("/radar")}><RadarIcon className="h-4 w-4" /> Radar<span className="kbd ml-auto">G R</span></Command.Item>
             <Command.Item value="runs" className={item} onSelect={() => go("/runs")}><Activity className="h-4 w-4" /> Runs<span className="kbd ml-auto">G U</span></Command.Item>
+            <Command.Item value="how it works guide workflow requirements" className={item} onSelect={() => go("/how-it-works")}><BookOpen className="h-4 w-4" /> How it works<span className="kbd ml-auto">G H</span></Command.Item>
             <Command.Item value="settings" className={item} onSelect={() => go("/settings")}><Settings className="h-4 w-4" /> Settings</Command.Item>
           </Command.Group>
           <Command.Group heading={<span className="label px-3">Actions</span>}>

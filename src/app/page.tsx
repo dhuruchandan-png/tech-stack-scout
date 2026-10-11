@@ -54,6 +54,10 @@ export default async function TodayPage() {
             <p className="mt-1 text-[13.5px] text-muted">
               Next weekly refresh in <span className="mono text-signal">{next.days}d {next.hours}h</span> · Mondays 6:00 IST
             </p>
+            <p className="mt-2 text-[12.5px] text-muted">
+              New here? Scout checks each account&apos;s public engineering footprint every week and backs every claim with a source.{" "}
+              <Link href="/how-it-works" className="text-signal hover:underline">See how it works →</Link>
+            </p>
           </div>
           <RadarSweep />
         </div>

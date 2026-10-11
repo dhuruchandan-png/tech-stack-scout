@@ -10,7 +10,7 @@ import { useRuns } from "@/components/run/RunConsole";
 import { NAV, Logo } from "./Sidebar";
 import { cn } from "@/lib/util";
 
-const TITLES: Record<string, string> = { "/": "Today", "/accounts": "Watchlist", "/outreach": "Outreach", "/radar": "Radar", "/runs": "Runs", "/settings": "Settings" };
+const TITLES: Record<string, string> = { "/": "Today", "/accounts": "Watchlist", "/outreach": "Outreach", "/radar": "Radar", "/runs": "Runs", "/settings": "Settings", "/how-it-works": "How it works" };
 
 export function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");

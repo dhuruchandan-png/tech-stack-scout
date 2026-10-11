@@ -16,7 +16,9 @@ HARD RULES
 - Banned in every output: ${BANNED_PHRASES.map((b) => `"${b}"`).join(", ")}, any {placeholder}, and anything that would fit any company.
 - talking_points: exactly 3, each one short sentence (max 30 words) with its own evidence_ids.
 - unknowns: things a salesperson would want to know that the evidence does not cover (can be empty).
-- Spell the company name exactly as given.`;
+- Spell the company name exactly as given.
+- Mention ONLY technologies, products, tools and numbers that literally appear in the evidence items or the computed facts. If something is not written there (for example a cloud, a framework or a product name), do not mention it, even if you know it to be true.
+- Never use the word "leverage". Prefer plain words over hyphenated compounds.`;
 
 export const BRIEF_SCHEMA = S.obj({
   summary_p1: S.str,

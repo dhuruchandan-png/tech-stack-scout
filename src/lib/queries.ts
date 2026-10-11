@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { callFirstScore } from "@/lib/compute/score";
 import { DAY, freshnessOf } from "@/lib/util";
@@ -97,8 +97,21 @@ export async function getRunWithSteps(runId: number) {
   return { run, company, steps };
 }
 
+/**
+ * A serverless function that hits its time limit dies without updating its run row. Anything "running" for over
+ * 3 minutes (the limit is 60 seconds) or "queued" for over 10 minutes is marked failed so the Runs page never lies,
+ * and the Retry button appears.
+ */
+export async function reapStuckRuns() {
+  const db = getDb();
+  const msg = "Timed out: the serverless function was stopped before this run finished. Tap Retry.";
+  await db.update(runs).set({ status: "failed", finishedAt: new Date(), error: msg }).where(and(eq(runs.status, "running"), lt(runs.startedAt, new Date(Date.now() - 3 * 60_000))));
+  await db.update(runs).set({ status: "failed", finishedAt: new Date(), error: msg }).where(and(eq(runs.status, "queued"), lt(runs.startedAt, new Date(Date.now() - 10 * 60_000))));
+}
+
 export async function getRecentRuns(limit = 60) {
   const db = getDb();
+  await reapStuckRuns().catch(() => {});
   const rs = await db.select({ run: runs, name: companies.name, domain: companies.domain }).from(runs).innerJoin(companies, eq(companies.id, runs.companyId)).orderBy(desc(runs.startedAt)).limit(limit);
   const ids = rs.map((r) => r.run.id);
   const steps = ids.length ? await db.select().from(runSteps).where(inArray(runSteps.runId, ids)).orderBy(asc(runSteps.id)) : [];

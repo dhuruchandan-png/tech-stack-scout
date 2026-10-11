@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, CalendarDays, ListChecks, Mail, Radar as RadarIcon, Settings } from "lucide-react";
+import { Activity, BookOpen, CalendarDays, ListChecks, Mail, Radar as RadarIcon, Settings } from "lucide-react";
 import { Fingerprint } from "@/components/viz/Fingerprint";
 import { cn } from "@/lib/util";
 
@@ -12,6 +12,7 @@ export const NAV = [
   { href: "/outreach", label: "Outreach", icon: Mail, keys: "G O" },
   { href: "/radar", label: "Radar", icon: RadarIcon, keys: "G R" },
   { href: "/runs", label: "Runs", icon: Activity, keys: "G U" },
+  { href: "/how-it-works", label: "How it works", icon: BookOpen, keys: "G H" },
   { href: "/settings", label: "Settings", icon: Settings, keys: "" },
 ];
 

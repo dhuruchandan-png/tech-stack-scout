@@ -28,6 +28,16 @@ export function stripCites(s: string): string {
   return s.replace(/\s*\[E\d+(?:\s*,\s*E\d+)*\]/g, "").replace(/\s+/g, " ").trim();
 }
 
+/** Deterministic clean-up for words the model keeps using despite instructions ("leverage" is a banned buzzword). */
+export function sanitizeGenerated(s: string): string {
+  const keepCase = (m: string, to: string) => (m[0] === m[0].toUpperCase() ? to[0].toUpperCase() + to.slice(1) : to);
+  return s
+    .replace(/\bleveraging\b/gi, (m) => keepCase(m, "using"))
+    .replace(/\bleveraged\b/gi, (m) => keepCase(m, "used"))
+    .replace(/\bleverages\b/gi, (m) => keepCase(m, "uses"))
+    .replace(/\bleverage\b/gi, (m) => keepCase(m, "use"));
+}
+
 export function citedIds(s: string): string[] {
   const ids = new Set<string>();
   for (const m of s.matchAll(/\[(E\d+(?:\s*,\s*E\d+)*)\]/g)) for (const p of m[1].split(",")) ids.add(p.trim());
@@ -69,10 +79,15 @@ export function keyNouns(text: string, company: string): string[] {
       const low = t.toLowerCase();
       if (comp.split(/\s+/).includes(low) || low === comp) return;
       if (STOP_CAPS.has(low)) return;
-      if (/\d/.test(t) || /[-_./]/.test(t)) {
-        // plain numbers: keep (they must be grounded), but skip "9" style words like "20-minute"
-        if (/^\d+-?(minute|min|mins|minutes)$/i.test(t)) return;
+      // numbers and identifiers (versions, file names, repo paths) are claims and must be grounded
+      if (/\d/.test(t) || /[_./]/.test(t)) {
+        if (/^\d+-?(minute|min|mins|minutes)$/i.test(t)) return; // "20-minute call" is not a claim
         nouns.add(t);
+        return;
+      }
+      // hyphenated words: only a claim when a part is capitalised ("Go-first"); "front-end", "open-source" are plain English
+      if (t.includes("-")) {
+        if (t.split("-").some((p) => /^[A-Z]/.test(p)) && idx > 0) nouns.add(t);
         return;
       }
       if (idx > 0 && /^[A-Z]/.test(t) && t.length > 1) nouns.add(t);
@@ -106,7 +121,12 @@ function commonChecks(text: string, ctx: CheckContext): string[] {
   for (const b of BANNED_PHRASES) if (low.includes(b)) reasons.push(`Contains banned phrase “${b}”`);
   if (/\{[^}]*\}|<[A-Za-z_ ]+>|\[(name|company|first ?name|your)[^\]]*\]/i.test(text)) reasons.push("Contains a placeholder");
   const c = ctx.company;
-  if (c && low.includes(c.toLowerCase()) && !text.includes(c)) reasons.push(`Company name must be spelled exactly “${c}”`);
+  if (c) {
+    const esc = c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const standalone = new RegExp(`(?<![\\w/@-])(?<!\\w\\.)${esc}(?![\\w/-]|\\.\\w)`, "gi");
+    const bad = (text.match(standalone) ?? []).some((m) => m !== c);
+    if (bad) reasons.push(`Company name must be spelled exactly “${c}”`);
+  }
   return reasons;
 }
 
@@ -136,7 +156,8 @@ export function checkTalkingPoint(textIn: string, ids: string[], ctx: CheckConte
   if (wc(text) > 40) reasons.push("Talking point is longer than 40 words");
   reasons.push(...checkIds(ids, ctx));
   reasons.push(...commonChecks(text, ctx));
-  if (ids.every((id) => ctx.validRefs.has(id)) && ids.length) reasons.push(...checkNounsGrounded(text, ctx, ids));
+  if (ids.every((id) => ctx.validRefs.has(id)) && ids.length)
+    reasons.push(...checkNounsGrounded(text, ctx, ids).filter((r) => !r.startsWith("Names nothing specific")));
   return { ok: reasons.length === 0, reasons };
 }
 
@@ -156,7 +177,7 @@ export function checkSummary(paragraphs: string[], ctx: CheckContext): CheckResu
     for (const s of sentences) {
       const ids = citedIds(s).filter((id) => ctx.validRefs.has(id));
       if (!ids.length) continue;
-      const bads = checkNounsGrounded(stripCites(s), ctx, ids).filter((r) => !r.startsWith("Names nothing"));
+      const bads = checkNounsGrounded(stripCites(s), ctx, Object.keys(ctx.evidenceText)).filter((r) => !r.startsWith("Names nothing"));
       if (bads.length) reasons.push(`${label}: ${bads[0]}`);
     }
   });

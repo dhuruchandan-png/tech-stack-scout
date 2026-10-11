@@ -29,6 +29,14 @@ export const TECH_TERMS: { name: string; re: RegExp; group: "language" | "cloud"
   { name: "Developer productivity", re: /\b(developer (productivity|experience|tooling|platform)|platform engineering|internal developer|dev ?ex|build (speed|times?)|ci (times?|speed))\b/i, group: "practice" },
 ];
 
+/** Q2 add-on: which cloud / infra tools do the open engineering roles name, and how many roles name each? */
+export function summarizeJobTech(texts: string[]): { name: string; count: number }[] {
+  const keep = new Set(TECH_TERMS.filter((t) => t.group === "cloud" || t.group === "infra").map((t) => t.name));
+  const counts = new Map<string, number>();
+  for (const t of texts) for (const name of findTech(t)) if (keep.has(name)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 8);
+}
+
 export function findTech(text: string): string[] {
   const found: string[] = [];
   for (const t of TECH_TERMS) if (t.re.test(text) && !found.includes(t.name)) found.push(t.name);

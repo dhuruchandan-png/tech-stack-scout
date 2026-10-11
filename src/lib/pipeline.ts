@@ -18,6 +18,7 @@ import { fetchHn } from "@/lib/sources/hn";
 import { fetchJobs } from "@/lib/sources/jobs";
 import { fetchYoutube } from "@/lib/sources/youtube";
 import type { BlogData, EvidenceDraft, GithubData, HnData, JobsData, SourceResult, YoutubeData } from "@/lib/types";
+import { summarizeJobTech } from "@/lib/compute/techdict";
 import { DAY, weekOf } from "@/lib/util";
 
 const { companies, runs, runSteps, snapshots, evidence, briefs, sourceCache } = schema;
@@ -158,6 +159,15 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
       infra = prev.snap.infra ?? null;
       microservices = prev.snap.microservices ?? microservices;
       commitSeries = prev.snap.commitSeries ?? commitSeries;
+    }
+
+    // Q2 also reads the job posts: tools named by open engineering roles (code, from a curated dictionary)
+    const jobMentions = jobs
+      ? summarizeJobTech(jobs.engineeringJobs.map((j) => `${j.title} ${j.text}`))
+      : failed("jobs") ? prev!.snap.infra?.jobMentions ?? [] : [];
+    if (jobMentions.length) {
+      infra = infra ?? { items: [], clouds: [], categories: {}, reposScanned: 0 };
+      infra = { ...infra, jobMentions };
     }
 
     const now = Date.now();

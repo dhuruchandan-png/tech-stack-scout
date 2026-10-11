@@ -146,7 +146,7 @@ export async function getSystemHealth(accts?: AccountRow[]) {
   const synced = rows.filter((r) => r.hubspot === "synced").length;
   const weekAgo = new Date(Date.now() - 7 * DAY);
   const [cost] = await db.select({ v: sql<number>`coalesce(sum(${briefs.costUsd}),0)::float` }).from(briefs).where(gte(briefs.createdAt, weekAgo));
-  const [lastCron] = await db.select().from(runs).where(eq(runs.trigger, "cron")).orderBy(desc(runs.startedAt)).limit(1);
+  const [lastCron] = await db.select().from(runs).where(inArray(runs.trigger, ["cron", "bulk"])).orderBy(desc(runs.startedAt)).limit(1);
   return {
     total: n, fresh, coverage, coveragePct: n ? Math.round((coverage / n) * 100) : 0,
     openers, verified, synced, costWeek: cost?.v ?? 0, lastWeeklyRun: lastCron?.startedAt ?? null,

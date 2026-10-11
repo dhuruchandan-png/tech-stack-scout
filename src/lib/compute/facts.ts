@@ -26,6 +26,7 @@ export function factsToText(f: Facts): string {
     const cats = Object.entries(f.infra.categories).map(([k, v]) => `${k}: ${v.join(", ")}`).join("; ");
     L.push(`Q2 cloud: ${f.infra.clouds.join(", ") || "none detected"}. Infra tools by category: ${cats || "none detected"}. Repos scanned: ${f.infra.reposScanned}.`);
   } else L.push("Q2 cloud/infra: unknown (no code scanned)");
+  if (f.infra?.jobMentions?.length) L.push(`Tools named in open engineering roles (number of roles): ${f.infra.jobMentions.map((m) => `${m.name} ${m.count}`).join(", ")}.`);
   if (f.microservices) L.push(`Microservices signal: ${f.microservices.level} (${f.microservices.reasons.join("; ")}). ${f.serviceRepoCount} service-style repos.`);
   const a = f.activity;
   if (a) {

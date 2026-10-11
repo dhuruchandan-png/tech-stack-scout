@@ -194,6 +194,8 @@ export type InfraResult = {
   clouds: string[]; // AWS | GCP | Azure | Vercel | Cloudflare ...
   categories: Record<string, string[]>; // category -> tool names
   reposScanned: number;
+  /** cloud / infra tools named in open engineering roles, with how many roles name each (code-computed) */
+  jobMentions?: { name: string; count: number }[];
 };
 export type MicroservicesResult = {
   level: "strong" | "some" | "none" | "unknown";

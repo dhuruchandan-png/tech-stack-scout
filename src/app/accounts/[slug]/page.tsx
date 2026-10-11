@@ -144,6 +144,14 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
                   );
                 })}
               </div>
+              {(infra?.jobMentions?.length ?? 0) > 0 && (
+                <div className="mt-3">
+                  <div className="label mb-1.5 !text-[10px]">Seen in open engineering roles</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {infra!.jobMentions!.slice(0, 6).map((m) => <span key={m.name} className="chip !py-0 text-[11.5px]">{m.name} <span className="mono text-faint">×{m.count}</span></span>)}
+                  </div>
+                </div>
+              )}
               {snap.microservices && (
                 <div className="mt-4 text-[13px]">
                   <MicroservicesBadge level={snap.microservices.level} />

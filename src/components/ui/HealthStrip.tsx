@@ -21,7 +21,7 @@ export function HealthStrip({ h }: { h: H }) {
   return (
     <div className="no-print -mx-4 overflow-x-auto border-b border-line bg-surface/60 md:-mx-6" aria-label="System health">
       <div className="flex min-w-max">
-        <Stat label="Last weekly run" value={last} />
+        <Stat label="Last full run" value={last} />
         <Stat label="Fresh ≤7d" value={`${h.fresh}/${h.total}`} tone={freshTone} />
         <Stat label="Evidence coverage" value={`${h.coveragePct}%`} />
         <Stat label="Openers verified" value={`${h.verified}/${h.openers}`} tone={h.openers === h.verified ? "verified" : "change"} />

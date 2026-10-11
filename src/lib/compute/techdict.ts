@@ -1,0 +1,56 @@
+/** Curated tech dictionary used (in code) to tag job descriptions and blog posts. */
+export const TECH_TERMS: { name: string; re: RegExp; group: "language" | "cloud" | "infra" | "data" | "practice" }[] = [
+  // Capitalised "Go" only: the lowercase verb "go" must never count as the language.
+  { name: "Go", re: /\b(Golang|golang)\b|\bGo (developers?|engineers?|services?|monorepo|codebase)\b|\bwritten in Go\b|\bGo\b(?=[,/ ]+(and|or|Python|Java|Rust|Kubernetes|TypeScript))/, group: "language" },
+  { name: "TypeScript", re: /\btypescript\b/i, group: "language" },
+  { name: "Python", re: /\bpython\b/i, group: "language" },
+  { name: "Java", re: /\bjava\b(?!script)/i, group: "language" },
+  { name: "Kotlin", re: /\bkotlin\b/i, group: "language" },
+  { name: "Rust", re: /\brust\b/i, group: "language" },
+  { name: "Ruby", re: /\b(ruby|rails)\b/i, group: "language" },
+  { name: "Node.js", re: /\bnode\.?js\b/i, group: "language" },
+  { name: "React", re: /\breact(\.js)?\b/i, group: "language" },
+  { name: "Scala", re: /\bscala\b/i, group: "language" },
+  { name: "AWS", re: /\b(aws|amazon web services|eks|ecs|lambda|s3|ec2)\b/i, group: "cloud" },
+  { name: "GCP", re: /\b(gcp|google cloud|gke|bigquery)\b/i, group: "cloud" },
+  { name: "Azure", re: /\b(azure|aks)\b/i, group: "cloud" },
+  { name: "Kubernetes", re: /\b(kubernetes|k8s|helm|kustomize)\b/i, group: "infra" },
+  { name: "Docker", re: /\bdocker\b/i, group: "infra" },
+  { name: "Terraform", re: /\b(terraform|pulumi|infrastructure as code|iac)\b/i, group: "infra" },
+  { name: "gRPC", re: /\b(grpc|protobuf|protocol buffers)\b/i, group: "infra" },
+  { name: "Microservices", re: /\bmicroservices?\b/i, group: "infra" },
+  { name: "CI/CD", re: /\b(ci\/cd|continuous (integration|delivery|deployment)|github actions|jenkins|circleci|buildkite)\b/i, group: "infra" },
+  { name: "Kafka", re: /\bkafka\b/i, group: "data" },
+  { name: "Postgres", re: /\bpostgres(ql)?\b/i, group: "data" },
+  { name: "Redis", re: /\bredis\b/i, group: "data" },
+  { name: "MongoDB", re: /\bmongo(db)?\b/i, group: "data" },
+  { name: "Elasticsearch", re: /\b(elasticsearch|opensearch)\b/i, group: "data" },
+  { name: "Observability", re: /\b(observability|prometheus|grafana|opentelemetry|datadog)\b/i, group: "infra" },
+  { name: "Developer productivity", re: /\b(developer (productivity|experience|tooling|platform)|platform engineering|internal developer|dev ?ex|build (speed|times?)|ci (times?|speed))\b/i, group: "practice" },
+];
+
+export function findTech(text: string): string[] {
+  const found: string[] = [];
+  for (const t of TECH_TERMS) if (t.re.test(text) && !found.includes(t.name)) found.push(t.name);
+  return found;
+}
+
+/** ~25-word snippet centred on the first match of any term. */
+export function snippetAround(text: string, terms: string[], words = 25): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  const toks = clean.split(" ");
+  let hit = -1;
+  for (const term of terms) {
+    const def = TECH_TERMS.find((t) => t.name === term);
+    if (!def) continue;
+    const idx = toks.findIndex((w) => def.re.test(w) || w.toLowerCase().includes(term.toLowerCase()));
+    if (idx >= 0) { hit = idx; break; }
+  }
+  const start = Math.max(0, (hit < 0 ? 0 : hit) - Math.floor(words / 3));
+  const slice = toks.slice(start, start + words).join(" ");
+  return `${start > 0 ? "…" : ""}${slice}${start + words < toks.length ? "…" : ""}`;
+}
+
+export const ENGINEERING_TITLE = /\b(engineer|developer|sre|devops|platform|infrastructure|architect|backend|frontend|full[- ]?stack|data scientist|machine learning|ml|security engineer|qa|test|software|technical lead|tech lead|engineering manager)\b/i;
+export const ENGINEERING_DEPT = /\b(engineering|technology|product development|r&d|platform|infrastructure|developer|devops|sre|data|security)\b/i;

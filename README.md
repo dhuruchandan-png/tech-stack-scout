@@ -45,7 +45,7 @@ Outreach       13 HubSpot: code facts auto; AI text only after approval; sent em
                15 Approved email opens in Nikhil's Gmail/Outlook. He sends, then clicks "Mark as sent". Resend = internal drafts + Monday brief only
 ```
 
-One company is processed per request (`/api/refresh/[companyId]`, `maxDuration = 60`). The cron queues all companies into `runs` and fans out at a concurrency of 3. Every step writes to `run_steps`, which the **Run Console** polls.
+One company is processed per request (`/api/refresh/[companyId]`, `maxDuration = 60`). The cron queues all companies into `runs` and fans out at a concurrency of 2. Every step writes to `run_steps`, which the **Run Console** polls.
 
 ## The Cut (non-negotiable)
 
@@ -60,7 +60,7 @@ Nothing reaches a prospect without Nikhil.
 
 | Source | What | Key | Notes |
 |---|---|---|---|
-| GitHub GraphQL + REST | repos, language bytes, commits (30/90d + 13 weekly buckets), releases, git trees | `GITHUB_TOKEN` (fine-grained, public read) | Top **100** repos by last push; tree scan on the **15** most recently pushed active repos; ≤3 `.tf` files per repo; raw file fetches via `raw.githubusercontent.com`. Pauses on low rate limit |
+| GitHub GraphQL + REST | repos, language bytes, commits (30/90d + 13 weekly buckets), releases, git trees | `GITHUB_TOKEN` (fine-grained, public read) | Top **50** repos by last push (a heavier page returned 502s for the biggest orgs); tree scan on the **15** most recently pushed active repos; ≤3 `.tf` files per repo; raw file fetches via `raw.githubusercontent.com`. Pauses on low rate limit |
 | Greenhouse / Lever / Ashby | open roles, descriptions | none | Slugs from override → name → domain root. Engineering roles by title/department |
 | Blog RSS | last 10 posts | none | Override, else common feed paths |
 | YouTube Data API v3 | conference talks (24 months) | `YOUTUBE_API_KEY` | ~100 quota units per company; 20 companies/week is far inside 10k/day. Filtered to titles that name the company **and** talk/conference words |

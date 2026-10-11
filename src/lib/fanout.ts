@@ -17,7 +17,7 @@ export async function enqueueAll(trigger: Trigger, onlyIds?: number[]): Promise<
  * Fans out one request per company (each gets its own 60s function) at a concurrency of 3.
  * `wait=1` makes each request run the refresh inline, so this loop paces itself.
  */
-export async function fanout(pairs: { companyId: number; runId: number }[], concurrency = 3) {
+export async function fanout(pairs: { companyId: number; runId: number }[], concurrency = 2) {
   const base = process.env.APP_BASE_URL;
   if (!base) throw new Error("APP_BASE_URL is not set");
   await mapLimit(pairs, concurrency, async (p) => {

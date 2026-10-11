@@ -103,13 +103,12 @@ query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
   rateLimit { remaining resetAt }
   repositoryOwner(login:$login) {
     login avatarUrl url
-    repositories(first:100, privacy:PUBLIC, orderBy:{field:PUSHED_AT, direction:DESC}) {
+    repositories(first:50, privacy:PUBLIC, orderBy:{field:PUSHED_AT, direction:DESC}) {
       totalCount
       nodes {
         name url description isFork isArchived pushedAt stargazerCount
         primaryLanguage { name }
-        languages(first:10, orderBy:{field:SIZE, direction:DESC}) { edges { size node { name color } } }
-        repositoryTopics(first:8) { nodes { topic { name } } }
+        languages(first:8, orderBy:{field:SIZE, direction:DESC}) { edges { size node { name color } } }
         latestRelease { publishedAt }
         defaultBranchRef { name target { ... on Commit {
           h30: history(since:$s30) { totalCount }
@@ -124,7 +123,7 @@ type GqlRepo = {
   name: string; url: string; description: string | null; isFork: boolean; isArchived: boolean; pushedAt: string | null;
   stargazerCount: number; primaryLanguage: { name: string } | null;
   languages: { edges: { size: number; node: { name: string; color: string | null } }[] };
-  repositoryTopics: { nodes: { topic: { name: string } }[] };
+  repositoryTopics?: { nodes: { topic: { name: string } }[] };
   latestRelease: { publishedAt: string } | null;
   defaultBranchRef: { name: string; target: { h30?: { totalCount: number }; h90?: { totalCount: number } } | null } | null;
 };
@@ -134,7 +133,7 @@ function toRepo(r: GqlRepo): RepoInfo {
     name: r.name, url: r.url, description: r.description, isFork: r.isFork, isArchived: r.isArchived,
     pushedAt: r.pushedAt, stars: r.stargazerCount, primaryLanguage: r.primaryLanguage?.name ?? null,
     languages: r.languages.edges.map((e) => ({ name: e.node.name, color: e.node.color, size: e.size })),
-    topics: r.repositoryTopics.nodes.map((n) => n.topic.name),
+    topics: (r.repositoryTopics?.nodes ?? []).map((n) => n.topic.name),
     commits30: r.defaultBranchRef?.target?.h30?.totalCount ?? 0,
     commits90: r.defaultBranchRef?.target?.h90?.totalCount ?? 0,
     lastReleaseAt: r.latestRelease?.publishedAt ?? null,

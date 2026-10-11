@@ -20,12 +20,12 @@ export async function enqueueAll(trigger: Trigger, onlyIds?: number[]): Promise<
 export async function fanout(pairs: { companyId: number; runId: number }[], concurrency = 3) {
   const base = process.env.APP_BASE_URL;
   if (!base) throw new Error("APP_BASE_URL is not set");
-  if (!process.env.CRON_SECRET) throw new Error("CRON_SECRET is not set");
   await mapLimit(pairs, concurrency, async (p) => {
     try {
       await fetch(`${base}/api/refresh/${p.companyId}?run=${p.runId}&wait=1`, {
         method: "POST",
-        headers: { authorization: `Bearer ${process.env.CRON_SECRET}` },
+        // With CRON_SECRET set the header authorises the call; in open-access mode (no ADMIN_PASSCODE) it is not needed.
+        headers: process.env.CRON_SECRET ? { authorization: `Bearer ${process.env.CRON_SECRET}` } : {},
         signal: AbortSignal.timeout(75_000),
       });
     } catch {

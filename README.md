@@ -7,6 +7,8 @@ Domain: B2B Sales Intelligence · Developer Tools. Built for Nikhil, an enterpri
 
 Everything is **viewable without login**. By default the app runs in **open access** (no `ADMIN_PASSCODE` set): every visitor can use every action, with an "Open access" badge in the top bar. Set `ADMIN_PASSCODE` in Vercel to lock the actions that change data or reach outside (Refresh, add/remove company, approve, send internally, HubSpot push, mark sent) behind the passcode (lock icon, top right). Nothing reaches a prospect in either mode.
 
+> **Submitting?** See [`docs/SUBMISSION.md`](docs/SUBMISSION.md). The in-app **How it works** page (`/how-it-works`) explains the whole workflow with live numbers.
+
 ## The problem
 
 Nikhil's product only fits certain setups: specific clouds, microservices, particular languages. For a sprint of 20 target companies he spends 2–3 hours piecing together engineering context from blogs, job descriptions, conference talks and public repos, and none of it reaches his CRM. His close rate is ~30% higher when he mentions something real about how a company builds.
@@ -169,4 +171,6 @@ src/components/     shell, signature viz (Fingerprint, Language Bar, Heat Strip,
 drizzle/            0000_init.sql, seed.sql
 tests/  e2e/        Vitest and Playwright
 docs/DEMO_SCRIPT.md 2–3 minute demo video script
+docs/SUBMISSION.md  what to submit, 60-second explanation, viva cheat sheet, extra tools
+docs/Tech_Stack_Scout_Components_Map.png  the Components Map (also at /how-it-works)
 ```

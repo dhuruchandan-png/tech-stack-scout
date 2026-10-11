@@ -54,7 +54,9 @@ test("command palette opens with Ctrl+K", async ({ page }) => {
   await expect(page.getByPlaceholder(/Jump to an account/)).toBeVisible();
 });
 
+// Skipped in open-access mode (no ADMIN_PASSCODE). Run with E2E_EXPECT_LOCKED=1 against a locked deployment.
 test("actions are locked without admin mode", async ({ request }) => {
+  test.skip(!process.env.E2E_EXPECT_LOCKED, "deployment is in open-access mode");
   const r = await request.post("/api/refresh/1");
   expect(r.status()).toBe(401);
   const all = await request.post("/api/refresh-all");

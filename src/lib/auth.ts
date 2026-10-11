@@ -17,8 +17,15 @@ export function checkPasscode(input: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-/** Everything is viewable without login; actions require the admin cookie. */
+/** Open access: with no ADMIN_PASSCODE configured, every action is available to every visitor. */
+export const isOpenAccess = () => !process.env.ADMIN_PASSCODE;
+
+/**
+ * Everything is viewable without login. Actions require the admin cookie, unless the deployment is in
+ * open-access mode (ADMIN_PASSCODE unset). Set ADMIN_PASSCODE to lock actions again.
+ */
 export async function isAdmin(): Promise<boolean> {
+  if (isOpenAccess()) return true;
   const token = adminToken();
   if (!token) return false;
   const jar = await cookies();

@@ -3,9 +3,9 @@
 **AI-powered tech stack intelligence for a sales team's target-account watchlist.**
 Domain: B2B Sales Intelligence · Developer Tools. Built for Nikhil, an enterprise account executive who sells a developer productivity tool.
 
-> Live app: _add your Vercel URL here_ · Admin passcode for graders: _add it here (the `ADMIN_PASSCODE` you set)_
+> Live app: https://tech-stack-scout-six.vercel.app · Open access (no passcode needed)
 
-Everything is **viewable without login**. Actions that change data or reach outside (Refresh, add/remove company, approve, send internally, HubSpot push, mark sent) unlock with the Admin passcode (lock icon, top right).
+Everything is **viewable without login**. By default the app runs in **open access** (no `ADMIN_PASSCODE` set): every visitor can use every action, with an "Open access" badge in the top bar. Set `ADMIN_PASSCODE` in Vercel to lock the actions that change data or reach outside (Refresh, add/remove company, approve, send internally, HubSpot push, mark sent) behind the passcode (lock icon, top right). Nothing reaches a prospect in either mode.
 
 ## The problem
 

@@ -41,6 +41,13 @@ function AdminLock({ admin, configured }: { admin: boolean; configured: boolean 
       else toast.error(r.error);
     });
 
+  if (admin && !configured) {
+    return (
+      <span className="chip h-9 border-verified/40 text-verified" title="No ADMIN_PASSCODE is set, so every visitor can use all actions. Set ADMIN_PASSCODE in Vercel to lock them.">
+        <Unlock className="h-4 w-4" /> <span className="hidden sm:inline">Open access</span>
+      </span>
+    );
+  }
   if (admin) {
     return (
       <button className="btn h-9 border-verified/40 text-verified" onClick={() => start(async () => { await lockAdmin(); toast("Admin mode off."); router.refresh(); })} title="Lock admin mode">

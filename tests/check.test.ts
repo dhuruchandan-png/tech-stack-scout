@@ -77,6 +77,12 @@ describe("checkOpener", () => {
     expect(checkOpener(t, ["E1", "E3"], c2).reasons.some((x) => /spelled exactly/.test(x))).toBe(false);
   });
 
+  it("accepts a lowercase repo name as the specific thing when it appears in the evidence", () => {
+    const c2 = { ...ctx, evidenceText: { ...ctx.evidenceText, E3: "Repo ndc-mongodb Go" } };
+    const t = "With your team pushing updates to ndc-mongodb, streamlining local build pipelines can directly boost your engineering productivity across every single service.";
+    expect(checkOpener(t, ["E3"], c2).reasons).toEqual([]);
+  });
+
   it("fails on two sentences", () => {
     const t = "Your Go monorepo CI post from 22 to 9 minutes stood out. With 27 gRPC services we help teams get that speed in local dev and testing.";
     expect(checkOpener(t, ["E1", "E3"], ctx).reasons).toContain("Opener must be one sentence");
@@ -95,6 +101,11 @@ describe("checkTalkingPoint", () => {
   });
   it("does not require talking points to name a specific thing (only the opener must)", () => {
     expect(checkTalkingPoint("They are hiring more infrastructure engineers this quarter.", ["E2"], ctx).reasons.some((r) => r.startsWith("Names nothing"))).toBe(false);
+  });
+  it("treats 4500 and 4,500 as the same number", () => {
+    const c3 = { ...ctx, evidenceText: { ...ctx.evidenceText, E1: "4,500 stars across public repos" } };
+    expect(checkTalkingPoint("Their repos hold 4500 stars in total.", ["E1"], c3).ok).toBe(true);
+    expect(checkTalkingPoint("Their repos hold 9999 stars in total.", ["E1"], c3).ok).toBe(false);
   });
   it("fails when it is long", () => {
     expect(checkTalkingPoint(Array(45).fill("word").join(" "), ["E1"], ctx).reasons).toContain("Talking point is longer than 40 words");

@@ -105,13 +105,25 @@ function grounded(noun: string, hay: string, hayStems: Set<string>): boolean {
   return hayStems.has(stem(n));
 }
 
+/** Lowercase hyphenated tokens (repo names like "ndc-mongodb") that appear verbatim in the evidence: real, specific things. */
+function evidencedHyphenNames(text: string, hay: string): string[] {
+  return (text.match(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g) ?? []).filter((t) => hay.includes(t));
+}
+
 export function checkNounsGrounded(text: string, ctx: CheckContext, ids: string[]): string[] {
   const reasons: string[] = [];
   const hay = (ids.map((id) => ctx.evidenceText[id] ?? "").join(" \n ") + " \n " + ctx.factsText).toLowerCase();
+  // "3,092" and "3092" are the same number
+  const hayPlain = hay.replace(/(?<=\d),(?=\d)/g, "");
   const hayStems = new Set(hay.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(stem));
   const nouns = keyNouns(text, ctx.company);
-  if (nouns.length === 0) reasons.push("Names nothing specific (no tool, repo, role, post or talk), so it could fit any company");
-  for (const n of nouns) if (!grounded(n, hay, hayStems)) reasons.push(`“${n}” does not appear in the cited evidence`);
+  if (nouns.length === 0 && evidencedHyphenNames(text, hay).length === 0)
+    reasons.push("Names nothing specific (no tool, repo, role, post or talk), so it could fit any company");
+  for (const n of nouns) {
+    const num = n.toLowerCase().replace(/,/g, "");
+    if (/^[\d.]+$/.test(num) && hayPlain.includes(num)) continue;
+    if (!grounded(n, hay, hayStems)) reasons.push(`“${n}” does not appear in the cited evidence`);
+  }
   return reasons;
 }
 
@@ -169,7 +181,7 @@ export function checkSummary(paragraphs: string[], ctx: CheckContext): CheckResu
     if (!p || wc(p) < 25) reasons.push(`${label} is missing or too short`);
     const sentences = p.split(/(?<=[.!?])\s+/).filter((s) => wc(stripCites(s)) >= 6);
     const uncited = sentences.filter((s) => citedIds(s).length === 0);
-    if (sentences.length && uncited.length / sentences.length > 0.2) reasons.push(`${label} has ${uncited.length} sentence(s) without a citation`);
+    if (uncited.length > 1) reasons.push(`${label} has ${uncited.length} sentence(s) without a citation`);
     const bad = citedIds(p).filter((id) => !ctx.validRefs.has(id));
     if (bad.length) reasons.push(`${label} cites evidence that does not exist: ${bad.join(", ")}`);
     reasons.push(...commonChecks(stripCites(p), ctx).filter((r) => !r.startsWith("Company name")));

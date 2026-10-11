@@ -17,18 +17,24 @@ function sumUsage(a: Usage | null, b: Usage): Usage {
 const validIds = (ids: unknown, ctx: CheckContext): string[] =>
   (Array.isArray(ids) ? ids : []).map((x) => String(x).trim().toUpperCase()).filter((x) => /^E\d+$/.test(x));
 
+/** Use the model's evidence_ids array; if it left it empty but cited inline ("[E4]"), recover those. */
+function pickIds(ids: unknown, rawText?: string): string[] {
+  const direct = validIds(ids, null as never);
+  return direct.length ? direct : citedIds(rawText ?? "");
+}
+
 function normalizeBrief(o: BriefOutput): BriefOutput {
   return {
     summary_p1: sanitizeGenerated((o.summary_p1 ?? "").trim()),
     summary_p2: sanitizeGenerated((o.summary_p2 ?? "").trim()),
     opener: {
       text: sanitizeGenerated(stripCites(o.opener?.text ?? "")),
-      evidence_ids: validIds(o.opener?.evidence_ids, null as never),
+      evidence_ids: pickIds(o.opener?.evidence_ids, o.opener?.text),
       hook_type: o.opener?.hook_type ?? "repo",
     },
     talking_points: (o.talking_points ?? []).slice(0, 3).map((t) => ({
       text: sanitizeGenerated(stripCites(t.text ?? "")),
-      evidence_ids: validIds(t.evidence_ids, null as never),
+      evidence_ids: pickIds(t.evidence_ids, t.text),
     })),
     unknowns: (o.unknowns ?? []).map(String),
   };

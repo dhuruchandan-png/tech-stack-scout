@@ -85,12 +85,13 @@ export async function discoverGithubOrg(name: string, domain: string): Promise<G
 
 /* ---------------- GraphQL ---------------- */
 
-async function gql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+async function gql<T>(query: string, variables: Record<string, unknown> = {}, opts: { retries?: number; timeoutMs?: number } = {}): Promise<T> {
   const res = await fetchRetry(`${API}/graphql`, {
     method: "POST",
     headers: { ...(headers() as Record<string, string>), "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
-    timeoutMs: 25_000,
+    timeoutMs: opts.timeoutMs ?? 25_000,
+    retries: opts.retries ?? 2,
   });
   if (!res.ok) throw new Error(`GitHub GraphQL ${res.status}`);
   const j = (await res.json()) as { data?: T; errors?: { message: string; type?: string }[] };
@@ -215,7 +216,7 @@ export async function fetchGithub(org: string, now = Date.now()): Promise<Github
   const vars = { login: org, s30: new Date(now - 30 * DAY).toISOString(), s90: new Date(now - 90 * DAY).toISOString() };
   let data: RepoData;
   try {
-    data = await gql<RepoData>(REPOS_QUERY, vars);
+    data = await gql<RepoData>(REPOS_QUERY, vars, { retries: 0, timeoutMs: 18_000 }); // one fast attempt, so huge orgs reach the light query in time
   } catch (e) {
     if (e instanceof RateLimitError) throw e;
     data = await gql<RepoData>(REPOS_QUERY_LIGHT, vars); // heavy orgs: fall back to the lighter page

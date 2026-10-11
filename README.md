@@ -79,7 +79,7 @@ Raw responses are cached per source per company for **6 hours** (`source_cache`)
 
 ## Gemini (Flash only)
 
-Model from `GEMINI_MODEL` (default `gemini-2.5-flash`) via `@google/genai`, always `responseMimeType: application/json` with a `responseSchema`. Tokens and cost are logged per call (`briefs`, `runs`). No Claude API or any other model is used anywhere in the app. All calls are in `src/lib/ai/`.
+Model from `GEMINI_MODEL` (default the rolling `gemini-flash-latest` alias, with automatic fallback across Flash versions, since Google retires versions for new API users) via `@google/genai`, always `responseMimeType: application/json` with a `responseSchema`. Tokens and cost are logged per call (`briefs`, `runs`). No Claude API or any other model is used anywhere in the app. All calls are in `src/lib/ai/`.
 
 - **Brief** (`BRIEF_SYSTEM` / `BRIEF_SCHEMA` in `src/lib/ai/prompts.ts`): input is the company, code-calculated facts, and ≤40 evidence items, never raw web pages. Output: `{summary_p1, summary_p2, opener{text, evidence_ids, hook_type}, talking_points×3, unknowns}`.
 - **Email draft:** `{subject ≤7 words, body ≤110 words, evidence_ids}`, signed "Nikhil".

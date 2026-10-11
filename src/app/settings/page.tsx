@@ -35,7 +35,7 @@ export default async function SettingsPage() {
         sources={[
           { name: "GitHub", ok: env("GITHUB_TOKEN"), detail: rate ? `${rate.remaining}/${rate.limit} requests left · resets ${new Date(rate.reset).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "token missing or unreachable" },
           { name: "YouTube Data API", ok: env("YOUTUBE_API_KEY"), detail: "~100 quota units per company search · free tier is 10,000/day" },
-          { name: "Gemini", ok: env("GEMINI_API_KEY"), detail: `model ${process.env.GEMINI_MODEL ?? "gemini-2.5-flash"}` },
+          { name: "Gemini", ok: env("GEMINI_API_KEY"), detail: `model ${process.env.GEMINI_MODEL ?? "gemini-flash-latest"} (falls back across Flash versions)` },
           { name: "HubSpot", ok: hubspotConfigured(), detail: "private app token" },
           { name: "Resend", ok: env("RESEND_API_KEY"), detail: "internal drafts and Monday brief only" },
         ]}

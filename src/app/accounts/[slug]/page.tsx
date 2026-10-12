@@ -82,7 +82,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
           <div className="h-[112px] w-[112px] shrink-0 md:h-[168px] md:w-[168px] [&>svg]:h-full [&>svg]:w-full">
             <Fingerprint size={168} languages={langs.slice(0, 6)} categories={Object.keys(infra?.categories ?? {})} level={level} />
           </div>
-          <div className="min-w-0 w-full flex-1 md:w-auto">
+          <div className="min-w-0 w-full flex-1 md:w-auto md:flex-[1_1_20rem]">
             <div className="label mb-1">Account brief</div>
             <h1 className="serif break-words text-[clamp(32px,6vw,60px)] leading-[1.05]">{company.name}</h1>
             <p className="mono mt-3 break-words text-[13.5px] text-muted [overflow-wrap:anywhere]">

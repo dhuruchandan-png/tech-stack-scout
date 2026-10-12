@@ -4,7 +4,7 @@
 
 | # | Item | Where | Weight |
 |---|---|---|---|
-| 1 | **Working public URL** | https://tech-stack-scout-six.vercel.app (no login needed to view; open access, so every action also works) | 10% |
+| 1 | **Working public URL** | https://tech-stack-scout-six.vercel.app (no login needed to view; actions are locked behind the Admin passcode, checked on the server) | 10% |
 | 2 | **GitHub repository** | https://github.com/dhuruchandan-png/tech-stack-scout | Backend and build quality 25% |
 | 3 | **Components Map** | `docs/Tech_Stack_Scout_Components_Map.png` (also shown at `/how-it-works` and at `/components-map.png`) | 10% |
 | 4 | **Demo video (2–3 min)** | Record with `docs/DEMO_SCRIPT.md` | 5% |
@@ -68,7 +68,7 @@ Note for the viva: the brief says **Supabase**. We used **Neon** (also Postgres)
 | Run tests / typecheck locally | Node.js 20+ (`npm install`, `npm test`) | Optional. The repo deploys without it |
 | Email the Monday brief to a real inbox | Resend account; with no verified domain it only sends to your own signup email | Optional (internal email only) |
 | Schedule the weekly job | `CRON_SECRET` in Vercel (a long random string) | Yes, or the Monday cron returns 401 |
-| Lock the dashboard for non-graders | `ADMIN_PASSCODE` in Vercel | Optional (the professor wants it open) |
+| Unlock actions | `ADMIN_PASSCODE` in Vercel (or `OPEN_ACCESS=true` for a no-login demo) | Yes. Without either, the app is read-only |
 
 ## Final checklist before submitting
 

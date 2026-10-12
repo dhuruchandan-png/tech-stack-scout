@@ -5,7 +5,7 @@ Domain: B2B Sales Intelligence · Developer Tools. Built for Nikhil, an enterpri
 
 > Live app: https://tech-stack-scout-six.vercel.app · Open access (no passcode needed)
 
-Everything is **viewable without login**. By default the app runs in **open access** (no `ADMIN_PASSCODE` set): every visitor can use every action, with an "Open access" badge in the top bar. Set `ADMIN_PASSCODE` in Vercel to lock the actions that change data or reach outside (Refresh, add/remove company, approve, send internally, HubSpot push, mark sent) behind the passcode (lock icon, top right). Nothing reaches a prospect in either mode.
+Everything is **viewable without login**. Every action that changes data or reaches outside (Refresh, add/remove company, draft, approve, send internally, HubSpot sync, mark sent, Q&A) needs the **Admin passcode**, checked **on the server** in every Server Action and POST route (an httpOnly cookie), not just hidden in the UI. The header shows **Locked** or **Unlocked**. If `ADMIN_PASSCODE` is not set, actions stay disabled. For a no-login demo, set `OPEN_ACCESS=true` explicitly (the header then shows "Open access"). Nothing reaches a prospect in any mode.
 
 > **Submitting?** See [`docs/SUBMISSION.md`](docs/SUBMISSION.md). The in-app **How it works** page (`/how-it-works`) explains the whole workflow with live numbers.
 
@@ -70,14 +70,18 @@ Nothing reaches a prospect without Nikhil.
 
 Raw responses are cached per source per company for **6 hours** (`source_cache`), so repeated "Refresh now" taps do not hammer the APIs. 403/429 get exponential back-off, honouring `Retry-After`.
 
-### Code-calculated thresholds
+### Code-calculated rules
 
-- **Languages:** bytes over non-fork, non-archived repos pushed in the last 12 months; config languages (Shell, Dockerfile, Makefile…) dropped unless nothing else exists. "Dominant" = top 1–2 (the second only if ≥ 60% of the first).
-- **Activity level:** **High** commits30 ≥ 150, or ≥ 60 across ≥ 8 repos · **Medium** commits30 ≥ 30 or ≥ 4 repos pushed · **Low** any commit or any hiring/blog/talk/release signal · **Dormant** nothing.
-- **Microservices signal:** points from repos with Dockerfile + orchestration (+3 for ≥3 repos), gRPC/protobuf (+2), docker-compose (+1), service mesh (+2), service-style repo names (+1/+2). ≥5 Strong, ≥2 Some, else None. **Unknown** if nothing could be scanned. Reasons are always shown.
-- **Confidence:** High needs a domain-matched org, ≥5 active repos, ≥3 scanned, ≥3 corroborating signals and no failed source. Medium for name-matched orgs or one strong leg. Low with no/fuzzy org or a thin footprint, always with the reason.
+- **Q1 languages:** code size in active, non-fork, non-archived repos pushed in the last 12 months. **Markup, docs and config formats are never counted** (MDX, Markdown, HTML, CSS, SCSS, Jupyter, TeX, Roff, Makefile, Dockerfile, HCL, YAML, JSON, Shell, PowerShell, Batchfile, Pkl, Nix, Starlark, Smarty, Mustache). HCL and Dockerfile stay visible as Q2 infra signals. Repos named `docs`, `website`, `*.github.io`, `examples`, `samples` or `awesome-*` are excluded and shown as "N docs/example repos excluded". "Dominant" = the top 1–2 (the second only if it is ≥ 60% of the first). If more than 60% of active repos are public SDKs/client libraries, Q1 shows "Mostly public SDKs: their internal stack may differ" and Gemini is told so.
+- **Q2 cloud and infra, in two labelled groups.** *Runs on / deploys to*: Terraform providers, CI deploy steps (aws-actions, google-github-actions…), serverless configs, a `vercel.json` in a real repo, or a cloud named in 3+ open engineering roles. *Integrates with / supports*: SDK imports, a `vercel.json` in a docs/website repo, one-off configs. Each cloud gets a **strength**: **Strong** = 3+ independent signals from 2+ repos or job posts, **Weak** = one signal, **Some** in between. Gemini is told never to describe a Weak signal as a "cloud footprint".
+- **Microservices signal:** a *deployable service* is a repo with both a Dockerfile and Kubernetes/Helm manifests (docs and example repos never count). **Strong** = 5+ deployable services, or gRPC/protobuf in 5+ repos plus Kubernetes named in open roles. **Medium** = 2–4. **Weak** = 1. **None** = scanned, none found. **Unknown** = nothing could be scanned. The reason line is shown exactly as computed.
+- **Q3 activity:** commits for the latest 30 days and the 30 days before (days 31–60), with **bot commits** (dependabot, renovate, github-actions, `*-bot`) removed by sampling the latest 100 commits of the 20 most recent repos. **Engineering roles** are counted by title (engineer, developer, SRE, devops, platform, infrastructure, architect…) and exclude success, advocate, sales, solutions, support, customer, recruiter, marketing, community and similar, shown as "N eng roles (of M total)". Level: **High** commits ≥ 150, or ≥ 60 across ≥ 8 repos · **Medium** ≥ 30 commits or ≥ 4 repos pushed · **Low** any commit or hiring/blog/talk/release · **Dormant** nothing.
+- **What changed:** a commit move is reported only if it is ≥ 20% **and** ≥ 50 commits (30 days vs the 30 before); a language shift only if ≥ 5 points on a language used in 3+ repos. **"New repo"** means created in the last 7 days; otherwise "Newly active".
+- **Talks (YouTube):** accepted only if the video is on the company's **own channel** (auto-detected, stored per company, editable), **or** its title names the company **and** a tech keyword (engineering, architecture, scale, kubernetes, migration, infra, platform, SDK, KubeCon/QCon/GopherCon…). Earnings, tickers (`$FRSH`), vox pops, reactions, memes, gaming, trailers and shorts are always rejected, and "Good week to call: a new talk" fires only on an accepted talk.
+- **GitHub org matching:** domain match first; if the best candidate has no public repos, other candidates (`name-developers`, `-dev`, `-inc`, `-oss`, `-labs`…) are tried, and an org whose website is on the same brand domain (freshworks.dev for freshworks.com) counts as a domain match. Always overridable.
+- **Confidence:** High needs a domain-matched org, ≥5 active repos, ≥3 scanned, ≥3 corroborating signals and no failed source. Medium for name-matched orgs or one strong leg. Low with no/fuzzy org or a thin footprint, always with the reason. **A Low-confidence account can never show a Verified opener.**
 - **Freshness:** teal < 7 days, amber 7–10, red beyond; "Stale since {date}" when a source failed.
-- **Call these first:** +3 per meaningful change (max 4), +4 High / +2 Medium activity, +3 Strong / +1 Some microservices, +2 any cloud signal, +3 verified opener, −6 already contacted.
+- **Call these first:** +3 per meaningful change (max 4), +4 High / +2 Medium activity, +3 Strong / +1 Medium microservices, +2 any "runs on" cloud, +3 verified opener, −6 already contacted.
 
 ## Gemini (Flash only)
 
@@ -89,25 +93,27 @@ Model from `GEMINI_MODEL` (default the rolling `gemini-flash-latest` alias, with
 
 ### Code check (step 10)
 
-Runs on every opener, talking point, summary and email draft (`src/lib/ai/check.ts`):
+Runs on every opener, talking point, summary and email draft (`src/lib/ai/check.ts`). "✓ every claim cited" is shown **only** when all of this passes:
 
-1. Every cited evidence id exists for this company's snapshot.
-2. The line's key nouns (tool / repo / role / topic names, numbers, mid-sentence capitalised words) appear in the cited evidence or in the code-calculated facts, after light stemming.
-3. No banned phrase ("I came across", "hope this finds you well", "leverage", "synergy", …) and no placeholder.
-4. Length: opener 18–35 words and one sentence; talking point ≤ 40; email subject ≤ 7 and body ≤ 110 with the "Nikhil" sign-off; summary sentences cited.
-5. Company name spelled exactly. A line that names nothing specific fails as "could fit any company".
+1. Every cited evidence id exists for this company's current snapshot.
+2. **Each sentence cites the right kind of evidence.** Every evidence item is tagged (language, infra, activity, jobs, blog, talk, Hacker News, repo). A sentence about commits must cite an *activity* item, a cloud or tool claim an *infra* or *jobs* item, languages a *language* item, hiring a *jobs* item, and so on.
+3. **Every number in a sentence appears in the items it cites** (so "1,225 commits" must be in the cited activity item). The code adds computed items for Q1/Q2/Q3 so Gemini has something correct to cite. Time windows ("30 days") are labels, not claims.
+4. Named tools, repos and roles exist in the evidence.
+5. **The opener** (≤ 30 words, one sentence) must (a) name one concrete thing that appears in a cited item's **title or snippet** (a repo, tool, job title, post or release), (b) connect it to a specific pain (CI, build, test, pipeline, local, environment, deploy, monorepo, services), and (c) contain no flattery ("impressive", "exciting", "shows how quickly"), no "streamline" and no "opportunity to".
+6. No banned phrase, no placeholder, company name spelled exactly, length limits met.
 
-On failure Gemini regenerates **once** with the reasons appended. Still failing → **Needs review** (amber, with reasons). Needs-review text **cannot be approved** until edited, and edits are re-checked. Approve re-checks again against the current evidence.
+On failure Gemini regenerates **once** with the reasons appended; still failing → **Needs review** (amber, with reasons), and it cannot be approved until edited and re-checked. A draft email can only be created from a **Verified** opener.
 
 ## Edge cases
 
 | Case | Behaviour |
 |---|---|
-| No public GitHub / only forks or archived | Excluded. Q1 shows "No public code found"; Q2/Q3 lean on jobs/blog/talks; confidence Low with the reason; Gemini states what is missing. **Freshworks in the seed shows this path.** |
+| No public GitHub / only forks or archived | Excluded. Q1 shows "No public code found"; Q2/Q3 lean on jobs/blog/talks; confidence Low with the reason, and the opener cannot be Verified; Gemini states what is missing. (The matcher first tries other candidate orgs with real code, e.g. `freshworks-developers`.) |
 | Wrong or ambiguous GitHub org | Candidates stored; "Pick a different GitHub org" chooser (avatar, description, website, repo count); choice saved as an override and a refresh runs |
 | No job board / RSS / talks / HN | Source shows **Not found** (grey) with a tip to add an override. Never guessed |
 | A source fails or times out | Last week's data and evidence kept, marked **Stale since {date}** (amber); run is **partial**, not failed; retried next run |
 | GitHub rate limit low | Requests stop early; the Runs page shows "Resuming at {time}"; the cache prevents repeat calls |
+| Mostly public SDKs (e.g. Stripe) | Q1 shows "Mostly public SDKs: their internal stack may differ", and Gemini lists it under "Not in the evidence" |
 | Duplicate company | Unique normalised domain (UI message + DB constraint). `https://`, `www.`, paths, case are normalised |
 | Company removed mid-run | Run finishes; data is hidden; skipped by the next cron. Soft delete with Undo for 30 days |
 | Gemini invalid JSON / failing opener / outage | Retry once with reasons → Needs review. Outage: code facts still shown with "Summary pending (Gemini unavailable)"; retried next run |
@@ -145,13 +151,13 @@ npm run dev
 
 | Command | What |
 |---|---|
-| `npm test` | Vitest unit tests (domain, languages, infra detectors, microservices, activity, diff, code check, allowlist and "never email prospects" guards, radar, scoring) |
+| `npm test` | 188 Vitest unit tests (domain, languages, repo classification, infra detectors and cloud strength, microservices, activity, diff, YouTube filter, engineering-role filter, the code check including topic/number/opener rules, the allowlist and "never email prospects" guards, radar, scoring) |
 | `npm run typecheck` / `npm run lint` | TypeScript and ESLint |
 | `npm run e2e` | Playwright smoke across all pages in both themes (`E2E_BASE_URL=https://… npm run e2e` to test a deployment) |
 
 ### Environment
 
-See `.env.example`. `DATABASE_URL`, `GEMINI_API_KEY`, `GITHUB_TOKEN` and `ADMIN_PASSCODE` are required for the core loop. `YOUTUBE_API_KEY` adds talks; `HUBSPOT_PRIVATE_APP_TOKEN` adds CRM sync; `RESEND_API_KEY` + `INTERNAL_EMAIL_DOMAIN`/allowlist + `NIKHIL_EMAIL` add internal email. Missing optional keys degrade gracefully: the source shows as failed/not configured and the rest of the app works.
+See `.env.example`. `DATABASE_URL`, `GEMINI_API_KEY`, `GITHUB_TOKEN` and `ADMIN_PASSCODE` are required for the core loop (without a passcode the app is read-only). `TEST_EMAIL` is required while `EMAIL_TEST_MODE=true`: with it missing, every email send is blocked with a clear message. `YOUTUBE_API_KEY` adds talks; `HUBSPOT_PRIVATE_APP_TOKEN` adds CRM sync; `RESEND_API_KEY` + `INTERNAL_EMAIL_DOMAIN`/allowlist + `NIKHIL_EMAIL` add internal email. Missing optional keys degrade gracefully: the source shows as failed/not configured and the rest of the app works.
 
 ### Cron on Vercel
 

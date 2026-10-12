@@ -17,6 +17,9 @@ export async function sendRaw(args: { to: string; subject: string; html: string 
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "RESEND_API_KEY is not set." };
   const s = await getSettings();
+  if (process.env.EMAIL_TEST_MODE === "true" && !process.env.TEST_EMAIL) {
+    return { ok: false, error: "Email is blocked: EMAIL_TEST_MODE is on but TEST_EMAIL is not set. Set TEST_EMAIL in Vercel (your own inbox) and redeploy." };
+  }
   if (!canDeliver(args.to, envGuardConfig(s.internalAllowlist ?? []))) {
     return { ok: false, error: `Blocked: ${args.to} is not an internal or test address.` };
   }

@@ -1,6 +1,14 @@
 /**
  * Step 10: the code check. Every opener, talking point, summary and email draft must pass this before it can be
  * shown as Verified or approved. Pure code, no AI.
+ *
+ * What "verified" means, concretely:
+ *  1. every cited evidence id exists for this company's current snapshot;
+ *  2. each sentence cites the RIGHT KIND of evidence for what it is about (activity -> an activity item,
+ *     a cloud/tool claim -> an infra or jobs item, languages -> a language item, ...);
+ *  3. every number in a sentence appears in the items that sentence cites;
+ *  4. named tools, repos and roles exist in the evidence;
+ *  5. the opener names a real thing from a cited item, ties it to a specific pain, and avoids flattery.
  */
 
 export const BANNED_PHRASES = [
@@ -9,7 +17,15 @@ export const BANNED_PHRASES = [
   "i hope this email", "reaching out to",
 ];
 
+/** Extra rules for the first line and email: no flattery, no "streamline", no "opportunity to". */
+export const FLATTERY = /\b(impressive|exciting|shows? how quickly|streamlin\w*|opportunity to|innovative|remarkable|incredible|amazing|fascinating|love (how|what)|great work|congrats|kudos|truly)\b/i;
+
+/** The product pain the opener must connect to: CI time, flaky tests, local setup across services. */
+export const PAIN_TERMS = /\b(ci|builds?|building|tests?|testing|pipelines?|local|environments?|deploy(s|ing|ment|ments)?|monorepo|services?)\b/i;
+
 export type CheckResult = { ok: boolean; reasons: string[] };
+
+export type Topic = "language" | "infra" | "activity" | "jobs" | "blog" | "talk" | "hn" | "repo";
 
 export type CheckContext = {
   company: string;
@@ -17,6 +33,10 @@ export type CheckContext = {
   validRefs: Set<string>;
   /** text (title + snippet + url + meta) of every evidence item, keyed by ref */
   evidenceText: Record<string, string>;
+  /** title + snippet only, keyed by ref. Numbers and the opener's anchor must appear here. Falls back to evidenceText. */
+  evidenceCore?: Record<string, string>;
+  /** topic of each evidence item (language, infra, activity, jobs, blog, talk, hn, repo), keyed by ref */
+  evidenceTopic?: Record<string, string>;
   /** computed facts as plain text (language names, tool names, counts) that the model was also given */
   factsText: string;
 };
@@ -63,9 +83,9 @@ const STOP_CAPS = new Set([
 
 /**
  * Key nouns = the specific things the line names: tool/repo/role/topic names.
- *  - tokens with digits, hyphen, underscore, dot, slash (repo names, versions, numbers)
+ *  - tokens with digits, underscore, dot, slash (repo names, versions, numbers)
  *  - capitalised words that are not at the start of a sentence (and not the company name)
- *  - quoted phrases are handled by the caller via the same tokens
+ *  - hyphenated words only when a part is capitalised ("Go-first"); "front-end" is plain English
  */
 export function keyNouns(text: string, company: string): string[] {
   const nouns = new Set<string>();
@@ -79,13 +99,11 @@ export function keyNouns(text: string, company: string): string[] {
       const low = t.toLowerCase();
       if (comp.split(/\s+/).includes(low) || low === comp) return;
       if (STOP_CAPS.has(low)) return;
-      // numbers and identifiers (versions, file names, repo paths) are claims and must be grounded
       if (/\d/.test(t) || /[_./]/.test(t)) {
         if (/^\d+-?(minute|min|mins|minutes)$/i.test(t)) return; // "20-minute call" is not a claim
         nouns.add(t);
         return;
       }
-      // hyphenated words: only a claim when a part is capitalised ("Go-first"); "front-end", "open-source" are plain English
       if (t.includes("-")) {
         if (t.split("-").some((p) => /^[A-Z]/.test(p)) && idx > 0) nouns.add(t);
         return;
@@ -114,11 +132,13 @@ function evidencedHyphenNames(text: string, hay: string): string[] {
   return (text.match(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g) ?? []).filter((t) => hay.includes(t));
 }
 
+const plainNums = (s: string) => s.replace(/(?<=\d),(?=\d)/g, "");
+
+/** Names must exist in the cited evidence or the computed facts (numbers are checked separately, against the cited items). */
 export function checkNounsGrounded(text: string, ctx: CheckContext, ids: string[]): string[] {
   const reasons: string[] = [];
   const hay = (ids.map((id) => ctx.evidenceText[id] ?? "").join(" \n ") + " \n " + ctx.factsText).toLowerCase();
-  // "3,092" and "3092" are the same number
-  const hayPlain = hay.replace(/(?<=\d),(?=\d)/g, "");
+  const hayPlain = plainNums(hay);
   const hayStems = new Set(hay.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(stem));
   const nouns = keyNouns(text, ctx.company);
   if (nouns.length === 0 && evidencedHyphenNames(text, hay).length === 0)
@@ -130,6 +150,99 @@ export function checkNounsGrounded(text: string, ctx: CheckContext, ids: string[
   }
   return reasons;
 }
+
+/* ---------------- topic and number fit (what makes "every claim cited" mean something) ---------------- */
+
+/** Which topic does this evidence item answer? Used so an activity sentence cannot cite a language item. */
+export function evidenceTopic(source: string, kind: string): Topic {
+  if (source === "github") {
+    if (kind === "languages") return "language";
+    if (kind === "activity") return "activity";
+    if (kind === "infra" || kind === "cloud" || kind === "microservices") return "infra";
+    return "repo";
+  }
+  if (source === "jobs") return "jobs";
+  if (source === "blog") return "blog";
+  if (source === "youtube") return "talk";
+  if (source === "hn") return "hn";
+  return "repo";
+}
+
+const LANGS = /\b(TypeScript|JavaScript|Python|Java|Kotlin|Ruby|Rust|PHP|Swift|Scala|Elixir|Dart|Haskell|Clojure|Lua|Svelte)\b|\bC\+\+|\bC#|\bGo\b(?!-)/;
+const TOPIC_RES: { topic: Topic; re: RegExp }[] = [
+  { topic: "activity", re: /\b(commits?|pushed|pushes|releases?|active repos?|active repositories|build activity|shipping cadence)\b/i },
+  { topic: "language", re: new RegExp(`${LANGS.source}|\\b(languages?|% of (their |the )?(public )?code|written in|codebase)\\b`, "i") },
+  { topic: "infra", re: /\b(AWS|GCP|Azure|Cloudflare|Vercel|Kubernetes|K8s|Helm|Terraform|Docker|containers?|gRPC|protobuf|microservices?|CI\/CD|GitHub Actions|serverless|cloud|infrastructure|orchestration|Pulumi|Istio)\b/i },
+  { topic: "jobs", re: /\b(roles?|hiring|job (posts?|postings?|descriptions?)|openings?|vacanc(y|ies)|recruit\w*|positions?)\b/i },
+  { topic: "blog", re: /\b(blog|blog post|post titled|article)\b/i },
+  { topic: "talk", re: /\b(talks?|keynote|conference|KubeCon|presentation|video|webinar|meetup)\b/i },
+  { topic: "hn", re: /\b(Hacker News|HN)\b/ },
+];
+
+/** Case handling: language names are case-sensitive ("Go" is the language, "go" is a verb), the rest are not. */
+export function sentenceTopics(s: string): Topic[] {
+  const out: Topic[] = [];
+  for (const { topic, re } of TOPIC_RES) {
+    if (topic === "language") {
+      if (LANGS.test(s) || /\b(languages?|% of (their |the )?(public )?code|written in|codebase)\b/i.test(s)) out.push(topic);
+    } else if (re.test(s)) out.push(topic);
+  }
+  return out;
+}
+
+/** Evidence kinds that may support a sentence about each topic. */
+const ALLOWED: Record<Topic, Topic[]> = {
+  activity: ["activity", "repo"],
+  language: ["language", "repo"],
+  infra: ["infra", "jobs", "repo"],
+  jobs: ["jobs"],
+  blog: ["blog"],
+  talk: ["talk"],
+  hn: ["hn"],
+  repo: ["repo"],
+};
+
+/** Numbers that are claims. Time windows ("30 days", "90 days", "12 months") are labels, not claims. */
+export function numbersIn(s: string): string[] {
+  const out: string[] = [];
+  for (const m of s.matchAll(/\b\d[\d,]*(?:\.\d+)?\b/g)) {
+    const after = s.slice((m.index ?? 0) + m[0].length, (m.index ?? 0) + m[0].length + 12).toLowerCase();
+    if (/^[\s-]*(day|days|week|weeks|month|months|year|years|hour|hours|minute|minutes|min|mins)\b/.test(after)) continue;
+    out.push(m[0].replace(/,/g, ""));
+  }
+  return out;
+}
+
+const coreOf = (ctx: CheckContext, id: string) => (ctx.evidenceCore?.[id] ?? ctx.evidenceText[id] ?? "").toLowerCase();
+
+/** Does this sentence cite items of the right kind, and do its numbers appear in the items it cites? */
+export function checkCitationFit(sentence: string, ids: string[], ctx: CheckContext, opts: { topics?: boolean } = {}): string[] {
+  const reasons: string[] = [];
+  const s = stripCites(sentence);
+  const valid = ids.filter((id) => ctx.validRefs.has(id));
+  if (!valid.length) return reasons;
+
+  if (opts.topics !== false && ctx.evidenceTopic) {
+    const citedTopics = new Set(valid.map((id) => ctx.evidenceTopic![id] as Topic).filter(Boolean));
+    for (const topic of sentenceTopics(s)) {
+      const ok = ALLOWED[topic].some((t) => citedTopics.has(t));
+      if (!ok) {
+        const got = [...citedTopics].join(", ") || "nothing";
+        reasons.push(`A sentence about ${topic} cites ${got} evidence, not ${ALLOWED[topic].join(" or ")}: “${s.slice(0, 70)}…”`);
+      }
+    }
+  }
+
+  const core = plainNums(valid.map((id) => coreOf(ctx, id)).join(" \n "));
+  for (const num of numbersIn(s)) {
+    if (!new RegExp(`(?<![\\d.])${num.replace(".", "\\.")}(?!\\d)`).test(core)) {
+      reasons.push(`The number ${num} does not appear in the cited item${valid.length > 1 ? "s" : ""} (${valid.join(", ")})`);
+    }
+  }
+  return reasons;
+}
+
+/* ---------------- shared rules ---------------- */
 
 function commonChecks(text: string, ctx: CheckContext): string[] {
   const reasons: string[] = [];
@@ -152,18 +265,37 @@ function checkIds(ids: string[], ctx: CheckContext): string[] {
   return bad.length ? [`Cites evidence that does not exist: ${bad.join(", ")}`] : [];
 }
 
+/**
+ * The opener. It must (a) name one concrete, checkable thing that appears in a cited item's title or snippet,
+ * (b) connect it to a specific pain (CI, builds, tests, pipelines, local environments, deploys, monorepo, services),
+ * (c) be at most 30 words, with no flattery, no "streamline" and no "opportunity to".
+ */
 export function checkOpener(textIn: string, ids: string[], ctx: CheckContext): CheckResult {
   const text = stripCites(textIn);
   const reasons: string[] = [];
   const n = wc(text);
-  if (n < 18 || n > 35) reasons.push(`Opener is ${n} words; must be 18–35`);
+  if (n < 10 || n > 30) reasons.push(`Opener is ${n} words; must be 10–30`);
   if (/[.!?]\s+\S/.test(text.replace(/\b(e\.g|i\.e)\./gi, ""))) reasons.push("Opener must be one sentence");
   reasons.push(...checkIds(ids, ctx));
   reasons.push(...commonChecks(text, ctx));
-  if (!/\b(productiv|developer|dev (loop|experience|workflow)|ci\b|build|test|local dev|deploy|engineers?|velocity|cycle time)/i.test(text))
-    reasons.push("Does not connect to developer productivity");
-  if (ids.every((id) => ctx.validRefs.has(id)) && ids.length) reasons.push(...checkNounsGrounded(text, ctx, ids));
-  return { ok: reasons.length === 0, reasons };
+  const fl = text.match(FLATTERY);
+  if (fl) reasons.push(`Avoid flattery and filler (“${fl[0]}”). State the observation plainly`);
+  if (!PAIN_TERMS.test(text))
+    reasons.push("Does not connect to a specific pain (CI time, builds, tests, pipelines, local environments, deploys, monorepo or many services)");
+
+  if (ids.length && ids.every((id) => ctx.validRefs.has(id))) {
+    const cores = ids.map((id) => coreOf(ctx, id)).join(" \n ");
+    const hay = (ids.map((id) => ctx.evidenceText[id] ?? "").join(" \n ") + " \n " + ctx.factsText).toLowerCase();
+    const anchors = [...keyNouns(text, ctx.company).filter((x) => !/^[\d.,]+$/.test(x)), ...(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+)+\b/g) ?? []).filter((t) => hay.includes(t))];
+    if (anchors.length === 0) {
+      reasons.push("Names nothing specific (no tool, repo, role, post or talk), so it could fit any company");
+    } else if (!anchors.some((a) => cores.includes(a.toLowerCase().replace(/['’]s$/, "")))) {
+      reasons.push("None of the things it names (repo, tool, role, post, release) appears in the cited item's title or snippet");
+    }
+    reasons.push(...checkNounsGrounded(text, ctx, ids).filter((r) => !r.startsWith("Names nothing")));
+    reasons.push(...checkCitationFit(text, ids, ctx, { topics: false }));
+  }
+  return { ok: reasons.length === 0, reasons: [...new Set(reasons)] };
 }
 
 export function checkTalkingPoint(textIn: string, ids: string[], ctx: CheckContext): CheckResult {
@@ -172,12 +304,14 @@ export function checkTalkingPoint(textIn: string, ids: string[], ctx: CheckConte
   if (wc(text) > 40) reasons.push("Talking point is longer than 40 words");
   reasons.push(...checkIds(ids, ctx));
   reasons.push(...commonChecks(text, ctx));
-  if (ids.every((id) => ctx.validRefs.has(id)) && ids.length)
+  if (ids.length && ids.every((id) => ctx.validRefs.has(id))) {
     reasons.push(...checkNounsGrounded(text, ctx, ids).filter((r) => !r.startsWith("Names nothing specific")));
-  return { ok: reasons.length === 0, reasons };
+    reasons.push(...checkCitationFit(text, ids, ctx));
+  }
+  return { ok: reasons.length === 0, reasons: [...new Set(reasons)] };
 }
 
-/** Summary paragraphs: every cited id must exist, and (almost) every sentence must carry a citation. */
+/** Summary paragraphs: every cited id must exist, sentences must cite the right kind of evidence, and numbers must match. */
 export function checkSummary(paragraphs: string[], ctx: CheckContext): CheckResult {
   const reasons: string[] = [];
   paragraphs.forEach((p, i) => {
@@ -189,12 +323,14 @@ export function checkSummary(paragraphs: string[], ctx: CheckContext): CheckResu
     const bad = citedIds(p).filter((id) => !ctx.validRefs.has(id));
     if (bad.length) reasons.push(`${label} cites evidence that does not exist: ${bad.join(", ")}`);
     reasons.push(...commonChecks(stripCites(p), ctx).filter((r) => !r.startsWith("Company name")));
-    // numbers and key nouns in each cited sentence must be grounded in what that sentence cites
     for (const s of sentences) {
       const ids = citedIds(s).filter((id) => ctx.validRefs.has(id));
       if (!ids.length) continue;
-      const bads = checkNounsGrounded(stripCites(s), ctx, Object.keys(ctx.evidenceText)).filter((r) => !r.startsWith("Names nothing"));
-      if (bads.length) reasons.push(`${label}: ${bads[0]}`);
+      // names must exist somewhere in this company's evidence; topic and numbers must fit what THIS sentence cites
+      const names = checkNounsGrounded(stripCites(s), ctx, Object.keys(ctx.evidenceText)).filter((r) => !r.startsWith("Names nothing"));
+      if (names.length) reasons.push(`${label}: ${names[0]}`);
+      const fit = checkCitationFit(s, ids, ctx);
+      if (fit.length) reasons.push(`${label}: ${fit[0]}`);
     }
   });
   return { ok: reasons.length === 0, reasons: [...new Set(reasons)].slice(0, 8) };
@@ -208,7 +344,11 @@ export function checkEmail(e: { subject: string; body: string; evidence_ids: str
   if (!/\bNikhil\s*$/.test(e.body.trim())) reasons.push("Body must end with the sign-off “Nikhil”");
   reasons.push(...checkIds(e.evidence_ids, ctx));
   reasons.push(...commonChecks(`${e.subject}\n${e.body}`, ctx));
-  if (e.evidence_ids.every((id) => ctx.validRefs.has(id)) && e.evidence_ids.length)
+  const fl = e.body.match(FLATTERY);
+  if (fl) reasons.push(`Avoid flattery and filler (“${fl[0]}”)`);
+  if (e.evidence_ids.length && e.evidence_ids.every((id) => ctx.validRefs.has(id))) {
     reasons.push(...checkNounsGrounded(e.body, ctx, e.evidence_ids).filter((r) => !r.startsWith("Names nothing")));
+    reasons.push(...checkCitationFit(e.body, e.evidence_ids, ctx, { topics: false }));
+  }
   return { ok: reasons.length === 0, reasons: [...new Set(reasons)] };
 }

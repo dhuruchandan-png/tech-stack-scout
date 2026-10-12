@@ -1,8 +1,9 @@
 import type { GithubCandidate } from "@/db/schema";
-import { domainRoot, sameDomain } from "@/lib/domain";
+import { domainRoot, hostOf, sameDomain } from "@/lib/domain";
 import { fetchRetry, getJson } from "@/lib/http";
 import { selectFilesToFetch } from "@/lib/compute/infra";
 import { isActiveRepo } from "@/lib/compute/languages";
+import { isBotAuthor, isDocsRepo } from "@/lib/compute/repos";
 import type { GithubData, GithubMatch, RepoInfo } from "@/lib/types";
 import { DAY, mapLimit } from "@/lib/util";
 
@@ -52,6 +53,11 @@ async function orgInfo(login: string): Promise<OrgInfo | null> {
 export async function discoverGithubOrg(name: string, domain: string): Promise<GithubMatch> {
   const root = domainRoot(domain);
   const logins = new Set<string>([root, norm(name)]);
+  // common alternative org names: freshworks -> freshworks-developers, ...-dev, ...-inc, ...-oss, ...-labs
+  for (const suf of ["developers", "dev", "inc", "oss", "labs", "hq", "org"]) {
+    logins.add(`${root}-${suf}`);
+    logins.add(`${root}${suf}`);
+  }
   try {
     const res = await fetchRetry(`${API}/search/users?q=${encodeURIComponent(`${name} type:org`)}&per_page=5`, { headers: headers(), retries: 1 });
     if (res.ok) {
@@ -62,15 +68,19 @@ export async function discoverGithubOrg(name: string, domain: string): Promise<G
     if (e instanceof RateLimitError) throw e;
   }
 
-  const infos = await mapLimit([...logins].slice(0, 7), 3, async (l) => orgInfo(l));
+  const infos = await mapLimit([...logins].slice(0, 20), 4, async (l) => orgInfo(l));
   const candidates: GithubCandidate[] = [];
   const seen = new Set<string>();
   for (const o of infos) {
     if (!o || seen.has(o.login.toLowerCase())) continue;
     seen.add(o.login.toLowerCase());
     let confidence: GithubCandidate["confidence"] = "low";
-    if (sameDomain(o.blog, domain)) confidence = "high";
-    else if (norm(o.login) === norm(root) || (o.name && norm(o.name) === norm(name)) || norm(o.login) === norm(name)) confidence = "medium";
+    // a website on the same domain, or on the same brand root (freshworks.dev for freshworks.com), is a domain match
+    const blogHost = o.blog ? hostOf(/^https?:\/\//i.test(o.blog) ? o.blog : `https://${o.blog}`) : null;
+    const sameBrand = !!blogHost && domainRoot(blogHost) === root;
+    const variant = new RegExp(`^${root.replace(/[^a-z0-9]/g, "")}-?(developers|dev|inc|oss|labs|hq|org)$`).test(norm(o.login).replace(/(developers|dev|inc|oss|labs|hq|org)$/, "$1"));
+    if (sameDomain(o.blog, domain) || sameBrand) confidence = "high";
+    else if (norm(o.login) === norm(root) || (o.name && norm(o.name) === norm(name)) || norm(o.login) === norm(name) || variant) confidence = "medium";
     candidates.push({
       login: o.login, avatarUrl: o.avatar_url, description: o.description ?? undefined,
       website: o.blog ?? undefined, repoCount: o.public_repos, confidence,
@@ -78,8 +88,9 @@ export async function discoverGithubOrg(name: string, domain: string): Promise<G
   }
   const rank = { high: 3, medium: 2, low: 1 } as const;
   candidates.sort((a, b) => rank[b.confidence] - rank[a.confidence] || (b.repoCount ?? 0) - (a.repoCount ?? 0));
-  const best = candidates[0];
-  if (best && best.confidence !== "low") return { org: best.login, confidence: best.confidence, candidates };
+  // an org with no public repos cannot answer Q1-Q3, so prefer the best candidate that actually has code
+  const best = candidates.find((c) => c.confidence !== "low" && (c.repoCount ?? 0) > 0);
+  if (best) return { org: best.login, confidence: best.confidence, candidates };
   return { org: null, confidence: null, candidates };
 }
 
@@ -100,19 +111,20 @@ async function gql<T>(query: string, variables: Record<string, unknown> = {}, op
 }
 
 const REPOS_QUERY = `
-query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
+query($login:String!, $s30:GitTimestamp!, $s60:GitTimestamp!, $s90:GitTimestamp!) {
   rateLimit { remaining resetAt }
   repositoryOwner(login:$login) {
     login avatarUrl url
     repositories(first:50, privacy:PUBLIC, orderBy:{field:PUSHED_AT, direction:DESC}) {
       totalCount
       nodes {
-        name url description isFork isArchived pushedAt stargazerCount
+        name url description isFork isArchived pushedAt createdAt stargazerCount
         primaryLanguage { name }
         languages(first:8, orderBy:{field:SIZE, direction:DESC}) { edges { size node { name color } } }
         latestRelease { publishedAt }
         defaultBranchRef { name target { ... on Commit {
           h30: history(since:$s30) { totalCount }
+          h60: history(since:$s60) { totalCount }
           h90: history(since:$s90) { totalCount }
         } } }
       }
@@ -122,14 +134,14 @@ query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
 
 /** Fallback for very large orgs: no per-repo commit history or release lookups, so it is far cheaper. */
 const REPOS_QUERY_LIGHT = `
-query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
+query($login:String!) {
   rateLimit { remaining resetAt }
   repositoryOwner(login:$login) {
     login avatarUrl url
     repositories(first:40, privacy:PUBLIC, orderBy:{field:PUSHED_AT, direction:DESC}) {
       totalCount
       nodes {
-        name url description isFork isArchived pushedAt stargazerCount
+        name url description isFork isArchived pushedAt createdAt stargazerCount
         primaryLanguage { name }
         languages(first:6, orderBy:{field:SIZE, direction:DESC}) { edges { size node { name color } } }
         defaultBranchRef { name }
@@ -139,12 +151,12 @@ query($login:String!, $s30:GitTimestamp!, $s90:GitTimestamp!) {
 }`;
 
 type GqlRepo = {
-  name: string; url: string; description: string | null; isFork: boolean; isArchived: boolean; pushedAt: string | null;
+  name: string; url: string; description: string | null; isFork: boolean; isArchived: boolean; pushedAt: string | null; createdAt?: string | null;
   stargazerCount: number; primaryLanguage: { name: string } | null;
   languages: { edges: { size: number; node: { name: string; color: string | null } }[] };
   repositoryTopics?: { nodes: { topic: { name: string } }[] };
   latestRelease: { publishedAt: string } | null;
-  defaultBranchRef: { name: string; target: { h30?: { totalCount: number }; h90?: { totalCount: number } } | null } | null;
+  defaultBranchRef: { name: string; target: { h30?: { totalCount: number }; h60?: { totalCount: number }; h90?: { totalCount: number } } | null } | null;
 };
 
 function toRepo(r: GqlRepo): RepoInfo {
@@ -153,34 +165,48 @@ function toRepo(r: GqlRepo): RepoInfo {
     pushedAt: r.pushedAt, stars: r.stargazerCount, primaryLanguage: r.primaryLanguage?.name ?? null,
     languages: r.languages.edges.map((e) => ({ name: e.node.name, color: e.node.color, size: e.size })),
     topics: (r.repositoryTopics?.nodes ?? []).map((n) => n.topic.name),
+    createdAt: r.createdAt ?? null,
+    commitsKnown: !!r.defaultBranchRef?.target,
     commits30: r.defaultBranchRef?.target?.h30?.totalCount ?? 0,
+    commits60: r.defaultBranchRef?.target?.h60?.totalCount ?? 0,
     commits90: r.defaultBranchRef?.target?.h90?.totalCount ?? 0,
     lastReleaseAt: r.latestRelease?.publishedAt ?? null,
     defaultBranch: r.defaultBranchRef?.name ?? null,
   };
 }
 
-/** 13 weekly commit totals (oldest -> newest) across the most recently pushed active repos. */
-async function weeklySeries(login: string, repos: RepoInfo[], now: number): Promise<number[]> {
-  const top = repos.filter((r) => isActiveRepo(r, now) && r.defaultBranch).slice(0, 20);
-  if (top.length === 0) return new Array(13).fill(0);
+/**
+ * 13 weekly commit totals (oldest -> newest) across the most recently pushed active repos, plus an estimate of the
+ * share of commits that came from bots (dependabot, renovate, github-actions, *-bot), sampled from the latest
+ * 100 commits of each of those repos.
+ */
+async function weeklySeries(login: string, repos: RepoInfo[], now: number): Promise<{ series: number[]; botShare: number }> {
+  const top = repos.filter((r) => isActiveRepo(r, now) && !isDocsRepo(r.name) && r.defaultBranch).slice(0, 20);
+  if (top.length === 0) return { series: new Array(13).fill(0), botShare: 0 };
   const iso = (t: number) => new Date(t).toISOString();
   const weekFields = Array.from({ length: 13 }, (_, i) => {
     const since = iso(now - (13 - i) * 7 * DAY);
     const until = iso(now - (12 - i) * 7 * DAY);
     return `w${i}: history(since:"${since}", until:"${until}") { totalCount }`;
   }).join(" ");
+  const botField = `bots: history(since:"${iso(now - 30 * DAY)}", first:100) { nodes { author { name user { login } } } }`;
   const parts = top.map(
-    (r, idx) => `r${idx}: repository(owner:${JSON.stringify(login)}, name:${JSON.stringify(r.name)}) { defaultBranchRef { target { ... on Commit { ${weekFields} } } } }`,
+    (r, idx) => `r${idx}: repository(owner:${JSON.stringify(login)}, name:${JSON.stringify(r.name)}) { defaultBranchRef { target { ... on Commit { ${weekFields} ${botField} } } } }`,
   );
-  const data = await gql<Record<string, { defaultBranchRef?: { target?: Record<string, { totalCount: number }> } } | null>>(`query { ${parts.join("\n")} }`);
+  type Target = Record<string, { totalCount?: number; nodes?: { author?: { name?: string | null; user?: { login?: string | null } | null } | null }[] }>;
+  const data = await gql<Record<string, { defaultBranchRef?: { target?: Target } } | null>>(`query { ${parts.join("\n")} }`);
   const series = new Array(13).fill(0) as number[];
+  let sampled = 0, bots = 0;
   for (const v of Object.values(data ?? {})) {
     const t = v?.defaultBranchRef?.target;
     if (!t) continue;
     for (let i = 0; i < 13; i++) series[i] += t[`w${i}`]?.totalCount ?? 0;
+    for (const n of t.bots?.nodes ?? []) {
+      sampled++;
+      if (isBotAuthor(n?.author?.user?.login, n?.author?.name)) bots++;
+    }
   }
-  return series;
+  return { series, botShare: sampled >= 20 ? bots / sampled : 0 };
 }
 
 /* ---------------- REST: trees + files ---------------- */
@@ -213,7 +239,7 @@ export async function fetchGithub(org: string, now = Date.now()): Promise<Github
     rateLimit: { remaining: number; resetAt: string };
     repositoryOwner: { login: string; avatarUrl: string; url: string; repositories: { totalCount: number; nodes: (GqlRepo | null)[] } } | null;
   };
-  const vars = { login: org, s30: new Date(now - 30 * DAY).toISOString(), s90: new Date(now - 90 * DAY).toISOString() };
+  const vars = { login: org, s30: new Date(now - 30 * DAY).toISOString(), s60: new Date(now - 60 * DAY).toISOString(), s90: new Date(now - 90 * DAY).toISOString() };
   let data: RepoData;
   try {
     data = await gql<RepoData>(REPOS_QUERY, vars, { retries: 0, timeoutMs: 18_000 }); // one fast attempt, so huge orgs reach the light query in time
@@ -227,7 +253,9 @@ export async function fetchGithub(org: string, now = Date.now()): Promise<Github
   if (!owner) throw new Error(`GitHub owner "${org}" not found`);
 
   const repos = owner.repositories.nodes.filter((n): n is GqlRepo => !!n).map(toRepo);
-  const activeTop = repos.filter((r) => isActiveRepo(r, now) && r.defaultBranch).slice(0, 15);
+  // scan the 15 most recently pushed real repos, plus up to 3 docs/website repos (they show where docs are hosted)
+  const activeAll = repos.filter((r) => isActiveRepo(r, now) && r.defaultBranch);
+  const activeTop = [...activeAll.filter((r) => !isDocsRepo(r.name)).slice(0, 15), ...activeAll.filter((r) => isDocsRepo(r.name)).slice(0, 3)];
 
   const trees: Record<string, string[]> = {};
   const files: Record<string, string> = {};
@@ -243,15 +271,18 @@ export async function fetchGithub(org: string, now = Date.now()): Promise<Github
   });
 
   let commitSeries: number[];
+  let botShare = 0;
   try {
-    commitSeries = await weeklySeries(owner.login, repos, now);
+    const w = await weeklySeries(owner.login, repos, now);
+    commitSeries = w.series;
+    botShare = w.botShare;
   } catch {
     commitSeries = new Array(13).fill(0); // series is cosmetic; never fail the run for it
   }
 
   return {
     org: owner.login, orgUrl: owner.url, avatarUrl: owner.avatarUrl,
-    repoTotal: owner.repositories.totalCount, repos, trees, files, commitSeries,
+    repoTotal: owner.repositories.totalCount, repos, trees, files, commitSeries, botShare,
   };
 }
 

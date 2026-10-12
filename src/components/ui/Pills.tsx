@@ -71,7 +71,7 @@ export function ActivityBadge({ level }: { level: string | null | undefined }) {
 }
 
 const MS_CLS: Record<string, string> = {
-  strong: "text-verified", some: "text-change", none: "text-muted", unknown: "text-faint",
+  strong: "text-verified", medium: "text-change", some: "text-change", weak: "text-muted", none: "text-muted", unknown: "text-faint",
 };
 export function MicroservicesBadge({ level }: { level: string | null | undefined }) {
   const l = level ?? "unknown";

@@ -28,7 +28,7 @@ export function ThemeToggle() {
   );
 }
 
-function AdminLock({ admin, configured }: { admin: boolean; configured: boolean }) {
+function AdminLock({ admin, configured, open: openAccess }: { admin: boolean; configured: boolean; open: boolean }) {
   const [open, setOpen] = useState(false);
   const [pass, setPass] = useState("");
   const [pending, start] = useTransition();
@@ -41,30 +41,30 @@ function AdminLock({ admin, configured }: { admin: boolean; configured: boolean 
       else toast.error(r.error);
     });
 
-  if (admin && !configured) {
+  if (openAccess) {
     return (
-      <span className="chip h-9 border-verified/40 text-verified" title="No ADMIN_PASSCODE is set, so every visitor can use all actions. Set ADMIN_PASSCODE in Vercel to lock them.">
+      <span className="chip h-9 border-change/40 text-change" title="OPEN_ACCESS=true is set, so every visitor can use all actions. Remove it in Vercel to lock the app.">
         <Unlock className="h-4 w-4" /> <span className="hidden sm:inline">Open access</span>
       </span>
     );
   }
   if (admin) {
     return (
-      <button className="btn h-9 border-verified/40 text-verified" onClick={() => start(async () => { await lockAdmin(); toast("Admin mode off."); router.refresh(); })} title="Lock admin mode">
-        <Unlock className="h-4 w-4" /> <span className="hidden sm:inline">Admin</span>
+      <button className="btn h-9 border-verified/40 text-verified" onClick={() => start(async () => { await lockAdmin(); toast("Locked."); router.refresh(); })} title="Click to lock again">
+        <Unlock className="h-4 w-4" /> <span className="hidden sm:inline">Unlocked</span>
       </button>
     );
   }
   return (
     <div className="relative">
       <button className="btn h-9" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Unlock admin mode">
-        <Lock className="h-4 w-4" /> <span className="hidden sm:inline">Admin</span>
+        <Lock className="h-4 w-4" /> <span className="hidden sm:inline">Locked</span>
       </button>
       {open && (
         <div className="card absolute right-0 top-11 z-50 w-72 p-4">
-          <div className="label mb-2">Admin mode</div>
-          <p className="mb-3 text-[12.5px] text-muted">Everything is viewable without login. Unlock to refresh, add or remove companies, approve and send.</p>
-          {!configured && <p className="mb-3 text-[12px] text-change">ADMIN_PASSCODE is not set on the server.</p>}
+          <div className="label mb-2">Locked</div>
+          <p className="mb-3 text-[12.5px] text-muted">Everything is viewable without login. Enter the passcode to refresh, add or remove companies, approve and send.</p>
+          {!configured && <p className="mb-3 text-[12px] text-change">ADMIN_PASSCODE is not set on the server, so actions are disabled. Set it in Vercel and redeploy.</p>}
           <input className="input" type="password" placeholder="Passcode" value={pass} autoFocus onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} aria-label="Admin passcode" />
           <button className="btn btn-primary mt-3 w-full" onClick={submit} disabled={pending || !pass}>Unlock</button>
         </div>
@@ -73,7 +73,7 @@ function AdminLock({ admin, configured }: { admin: boolean; configured: boolean 
   );
 }
 
-export function TopBar({ admin, adminConfigured }: { admin: boolean; adminConfigured: boolean }) {
+export function TopBar({ admin, adminConfigured, open }: { admin: boolean; adminConfigured: boolean; open: boolean }) {
   const path = usePathname();
   const { refreshAll } = useRuns();
   const seg = path.split("/").filter(Boolean);
@@ -98,7 +98,7 @@ export function TopBar({ admin, adminConfigured }: { admin: boolean; adminConfig
           <button className="btn h-9 w-9 p-0 lg:hidden" onClick={() => window.dispatchEvent(new Event("tss:palette"))} aria-label="Search"><Search className="h-4 w-4" /></button>
           {admin && <button className="btn hidden h-9 sm:inline-flex" onClick={refreshAll}>Refresh all</button>}
           <ThemeToggle />
-          <AdminLock admin={admin} configured={adminConfigured} />
+          <AdminLock admin={admin} configured={adminConfigured} open={open} />
         </div>
       </div>
       <nav className="flex gap-1 overflow-x-auto border-t border-line px-3 py-1.5 md:hidden" aria-label="Mobile">

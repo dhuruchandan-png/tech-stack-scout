@@ -6,7 +6,8 @@ import { findTech } from "@/lib/compute/techdict";
 import { costOf } from "@/lib/ai/gemini";
 import { freshnessOf, weekOf } from "@/lib/util";
 import { nextWeeklyRefresh } from "@/lib/safe";
-import { keepTalk } from "@/lib/sources/youtube";
+import { judgeVideo } from "@/lib/sources/youtube";
+import { isEngineeringRole } from "@/lib/compute/techdict";
 import { keepHn } from "@/lib/sources/hn";
 import { feedCandidates } from "@/lib/sources/blog";
 import { slugCandidates } from "@/lib/sources/jobs";
@@ -81,10 +82,32 @@ describe("tech dictionary", () => {
 });
 
 describe("source filters", () => {
-  it("keeps only real conference talks that name the company", () => {
-    expect(keepTalk("Running 27 services on EKS: Acme at KubeCon", "", "Acme")).toBe(true);
-    expect(keepTalk("Acme unboxing review", "my honest thoughts", "Acme")).toBe(false);
-    expect(keepTalk("KubeCon keynote", "nothing about them", "Acme")).toBe(false);
+  it("accepts a video only from the company's own channel, or when the title names the company AND a tech keyword", () => {
+    expect(judgeVideo({ title: "Running 27 services on EKS: Acme at KubeCon" }, "Acme")).toMatchObject({ accept: true, own: false });
+    expect(judgeVideo({ title: "Acme engineering at scale" }, "Acme").accept).toBe(true);
+    expect(judgeVideo({ title: "Inside our platform architecture", channelId: "UCown" }, "Acme", "UCown")).toMatchObject({ accept: true, own: true });
+    expect(judgeVideo({ title: "KubeCon keynote about nothing" }, "Acme").accept).toBe(false); // does not name the company
+    expect(judgeVideo({ title: "Why Acme is great" }, "Acme").accept).toBe(false); // no tech keyword
+  });
+  it("always rejects earnings, tickers, vox pops, memes, gaming, trailers and shorts, even on the own channel", () => {
+    const bad = [
+      "Freshworks Q3 earnings call $FRSH", "Freshworks vox pop: what do people think?", "Postman meme compilation", "Temporal Warhammer 40k gameplay",
+      "Acme unboxing review", "Acme product trailer", "Acme #shorts", "Acme stock price reaction", "Acme architecture reaction video",
+    ];
+    for (const title of bad) {
+      expect(judgeVideo({ title, channelId: "UCown" }, title.split(" ")[0], "UCown").accept, title).toBe(false);
+    }
+  });
+  it("ignores other companies' channels when only a company-name match exists", () => {
+    expect(judgeVideo({ title: "Stripe Sessions recap", channelId: "UCother" }, "Stripe", "UCstripe").accept).toBe(false);
+  });
+  it("counts only real engineering titles as engineering roles", () => {
+    for (const t of ["Senior Software Engineer", "Platform Engineer", "Site Reliability Engineer", "Security Engineer", "Data Engineer", "Engineering Manager", "Developer Experience Engineer", "DevOps Engineer", "Infrastructure Architect"]) {
+      expect(isEngineeringRole(t), t).toBe(true);
+    }
+    for (const t of ["Developer Success Engineer", "Developer Advocate", "Solutions Engineer", "Sales Engineer", "Customer Support Engineer", "Technical Recruiter", "Account Executive", "Marketing Manager", "Community Evangelist", "Program Manager"]) {
+      expect(isEngineeringRole(t), t).toBe(false);
+    }
   });
   it("keeps HN items from the company domain or naming it with a tech keyword", () => {
     expect(keepHn({ title: "Whatever", url: "https://blog.acme.com/post" }, "Acme", "acme.com")).toBe(true);

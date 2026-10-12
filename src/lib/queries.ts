@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { ensureSchema } from "@/db/raw";
 import { callFirstScore } from "@/lib/compute/score";
 import { DAY, freshnessOf } from "@/lib/util";
 
@@ -29,6 +30,7 @@ export async function getCompanyIndex() {
 }
 
 export async function getSettings() {
+  await ensureSchema().catch(() => {}); // seeds the default product notes the first time
   const db = getDb();
   const [row] = await db.select().from(settings).limit(1);
   return row ?? { id: 1, productNotes: null, internalAllowlist: [] as string[], briefRecipients: [] as string[] };
@@ -36,6 +38,7 @@ export async function getSettings() {
 
 /** Everything the Watchlist/Today pages need in a few round trips (no N+1). */
 export async function getAccounts(opts: { includeRemoved?: boolean } = {}): Promise<AccountRow[]> {
+  await ensureSchema().catch(() => {});
   const db = getDb();
   const cos = await db.select().from(companies).where(opts.includeRemoved ? undefined : eq(companies.active, true)).orderBy(asc(companies.name));
   if (!cos.length) return [];

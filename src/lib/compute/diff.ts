@@ -15,7 +15,7 @@ export type CurrentSnap = Snap & {
   newJobs?: { title: string; techs: string[]; ref?: string }[];
   newBlogs?: { title: string; ref?: string }[];
   newTalks?: { title: string; ref?: string }[];
-  newRepos?: { name: string; commits30: number; language: string | null; ref?: string }[];
+  newRepos?: { name: string; commits30: number; language: string | null; ref?: string; created?: boolean }[];
 };
 
 /** Step 8: what changed vs last week. Pure code, no AI. */
@@ -42,25 +42,30 @@ export function diffSnapshots(prev: Snap | null, cur: CurrentSnap): ChangeItem[]
   void prevJobs;
 
   for (const r of cur.newRepos ?? []) {
-    out.push({ sign: "+", text: `New repo ${r.name}${r.language ? ` (${r.language})` : ""}, ${r.commits30} commits`, evidenceIds: refs(r.ref) });
+    // "New repo" = created in the last 7 days. Anything else that just started getting commits is "Newly active".
+    const label = r.created === false ? "Newly active:" : "New repo";
+    out.push({ sign: "+", text: `${label} ${r.name}${r.language ? ` (${r.language})` : ""}, ${r.commits30} commits`, evidenceIds: refs(r.ref) });
   }
   for (const b of cur.newBlogs ?? []) out.push({ sign: "+", text: `Blog: “${b.title}”`, evidenceIds: refs(b.ref) });
   for (const t of cur.newTalks ?? []) out.push({ sign: "+", text: `Talk: “${t.title}”`, evidenceIds: refs(t.ref) });
 
-  // commits
-  const p30 = prev.activity?.commits30, c30 = cur.activity?.commits30;
-  if (p30 != null && c30 != null && p30 > 0) {
+  // commits: the latest 30 days against the 30 days before (like-for-like rolling windows, bots excluded).
+  // Only reported when the move is at least 20% AND at least 50 commits, so quiet weeks do not look like news.
+  const c30 = cur.activity?.commits30, p30 = cur.activity?.commitsPrev30;
+  if (cur.activity?.commitsKnown !== false && p30 != null && c30 != null && p30 > 0) {
     const pct = Math.round(((c30 - p30) / p30) * 100);
-    if (Math.abs(pct) >= 10) out.push({ sign: "~", text: `Commits 30d ${p30} → ${c30} (${pct > 0 ? "+" : ""}${pct}%)` });
+    if (Math.abs(pct) >= 20 && Math.abs(c30 - p30) >= 50) {
+      out.push({ sign: "~", text: `Commits, last 30 days vs the 30 before: ${p30} → ${c30} (${pct > 0 ? "+" : ""}${pct}%)` });
+    }
   }
 
-  // language share shifts (>= 2 points)
+  // language share shifts: at least 5 points, and the language must be in 3+ repos (a single repo swing is noise)
   const prevLang = new Map((prev.languages ?? []).map((l) => [l.name, l.share]));
   for (const l of cur.languages ?? []) {
     const before = prevLang.get(l.name);
-    if (before == null) continue;
+    if (before == null || (l.repoCount ?? 3) < 3) continue;
     const d = Math.round((l.share - before) * 100);
-    if (Math.abs(d) >= 2) {
+    if (Math.abs(d) >= 5) {
       out.push({
         sign: d > 0 ? "+" : "-",
         text: `${l.name} share ${d > 0 ? "up" : "down"} ${Math.abs(d)} pts (${Math.round(before * 100)}% → ${Math.round(l.share * 100)}%)`,

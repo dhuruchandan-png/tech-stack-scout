@@ -19,6 +19,7 @@ import { LanguageBar } from "@/components/viz/LanguageBar";
 import { dominantLanguages, pct } from "@/lib/compute/languages";
 import { isAdmin } from "@/lib/auth";
 import { hubspotCompanyUrl } from "@/lib/hubspot";
+import { getYoutubeChannelId } from "@/db/raw";
 import { getAccountByDomain, getEvidence, getHistory, getQa, getRunsForCompany } from "@/lib/queries";
 import { safe } from "@/lib/safe";
 import { cn, fmtInt, timeAgo } from "@/lib/util";
@@ -68,6 +69,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
   const goodWeek = goodWeekLine(changes);
   const evCount = ev.length;
   const noCode = snap && langs.length === 0;
+  const youtubeChannelId = await getYoutubeChannelId(company.id).catch(() => null);
 
   return (
     <div>
@@ -76,12 +78,14 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
       {/* ---------- hero ---------- */}
       <section className="relative overflow-hidden pb-6 pt-8">
         <div className="topo absolute inset-x-0 top-0 h-[300px]" aria-hidden="true" />
-        <div className="relative flex flex-wrap items-center gap-8">
-          <Fingerprint size={168} languages={langs.slice(0, 6)} categories={Object.keys(infra?.categories ?? {})} level={level} />
-          <div className="min-w-0 flex-1">
+        <div className="relative flex flex-col gap-5 md:flex-row md:flex-wrap md:items-center md:gap-8">
+          <div className="h-[112px] w-[112px] shrink-0 md:h-[168px] md:w-[168px] [&>svg]:h-full [&>svg]:w-full">
+            <Fingerprint size={168} languages={langs.slice(0, 6)} categories={Object.keys(infra?.categories ?? {})} level={level} />
+          </div>
+          <div className="min-w-0 w-full flex-1 md:w-auto">
             <div className="label mb-1">Account brief</div>
-            <h1 className="serif break-words text-[clamp(36px,5vw,60px)] leading-none">{company.name}</h1>
-            <p className="mono mt-3 truncate text-[13.5px] text-muted">
+            <h1 className="serif break-words text-[clamp(32px,6vw,60px)] leading-[1.05]">{company.name}</h1>
+            <p className="mono mt-3 break-words text-[13.5px] text-muted [overflow-wrap:anywhere]">
               {company.domain}
               {company.githubOrg && <> · <a className="hover:text-signal" href={`https://github.com/${company.githubOrg}`} target="_blank" rel="noreferrer">github.com/{company.githubOrg}</a></>}
               {company.jobBoardProvider && <> · <span className="capitalize">{company.jobBoardProvider}</span></>}
@@ -119,20 +123,44 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
                     <span className="text-[13px] text-muted">dominant · {pct(dom.reduce((s, d) => s + d.share, 0))}% of code</span>
                   </div>
                   <div className="mt-5"><LanguageBar languages={langs.length > 5 ? [...langs.slice(0, 5)] : langs} trend={trend} /></div>
-                  <div className="mt-auto pt-4 text-[12px] text-muted">Bytes in active, non-fork repos pushed in the last 12 months <ReceiptRow ids={refsOf((e) => e.kind === "languages", 1)} evidence={evidence} /></div>
+                  <div className="mt-auto space-y-1 pt-4 text-[12px] text-muted">
+                    <div>Code size in active, non-fork repos pushed in the last 12 months <ReceiptRow ids={refsOf((e) => e.kind === "languages", 1)} evidence={evidence} /></div>
+                    {(act?.docsRepos ?? 0) > 0 && <div className="mono text-[11px] text-faint">{act!.docsRepos} docs/example repos excluded · markup and config formats are not counted as languages</div>}
+                    {act?.sdkHeavy && <div className="rounded-input border border-change/40 bg-change/10 px-2 py-1 text-[11.5px] text-change">Mostly public SDKs: their internal stack may differ.</div>}
+                  </div>
                 </>
               )}
             </section>
 
             <section className="card p-5" aria-labelledby="q2">
               <div className="flex items-center justify-between"><h2 id="q2" className="label">Q2 · Cloud & infra</h2><ReceiptRow ids={refsOf((e) => e.kind === "infra", 3)} evidence={evidence} /></div>
-              <div className="mt-3 flex min-h-[28px] flex-wrap gap-2">
-                {(infra?.clouds ?? []).map((c) => <span key={c} className="chip border-signal/30 bg-signal/10 text-signal"><CloudGlyph name={c} /> {c}</span>)}
-                {(infra?.items ?? []).some((i) => i.tool === "Terraform") && <span className="chip">Terraform</span>}
-                {(infra?.items ?? []).some((i) => i.tool === "Helm") && <span className="chip">Helm</span>}
-                {(infra?.items ?? []).some((i) => i.tool === "gRPC / protobuf") && <span className="chip">gRPC</span>}
-                {!(infra?.clouds.length) && !(infra?.items.length) && <span className="text-[13px] text-muted">No cloud signals found in scanned repos</span>}
-              </div>
+              {(() => {
+                const cs = infra?.cloudStrength ?? (infra?.clouds ?? []).map((c) => ({ cloud: c, group: "runs" as const, strength: "some" as const, signals: 1, origins: 1 }));
+                const runs = cs.filter((c) => c.group === "runs");
+                const integ = cs.filter((c) => c.group === "integrates");
+                const chip = (c: (typeof cs)[number]) => (
+                  <span key={`${c.group}-${c.cloud}`} title={`${c.signals} independent signal${c.signals === 1 ? "" : "s"} from ${c.origins} ${c.origins === 1 ? "origin" : "origins"}`}
+                    className={cn("chip", c.strength === "strong" ? "border-signal/40 bg-signal/10 text-signal" : c.strength === "some" ? "border-line-strong" : "border-dashed text-muted")}>
+                    <CloudGlyph name={c.cloud} /> {c.cloud} <span className="mono text-[10.5px] opacity-80">{c.strength}</span>
+                  </span>
+                );
+                const tools = ["Terraform", "Helm", "gRPC / protobuf", "Kubernetes"].filter((t) => (infra?.items ?? []).some((i) => i.tool === t));
+                return (
+                  <div className="mt-3 space-y-2.5">
+                    <div>
+                      <div className="label mb-1 !text-[10px]">Runs on / deploys to</div>
+                      <div className="flex flex-wrap gap-1.5">{runs.length ? runs.map(chip) : <span className="text-[12.5px] text-faint">no deployment signals found</span>}</div>
+                    </div>
+                    {integ.length > 0 && (
+                      <div>
+                        <div className="label mb-1 !text-[10px]">Integrates with / supports</div>
+                        <div className="flex flex-wrap gap-1.5">{integ.map(chip)}</div>
+                      </div>
+                    )}
+                    {tools.length > 0 && <div className="flex flex-wrap gap-1.5">{tools.map((t) => <span key={t} className="chip !py-0 text-[11.5px] text-muted">{t}</span>)}</div>}
+                  </div>
+                );
+              })()}
               <div className="mt-4 grid grid-cols-3 gap-2">
                 {CATS.map((c) => {
                   const tools = [...new Set(c.key.flatMap((k) => infra?.categories?.[k] ?? []))];
@@ -155,7 +183,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
               {snap.microservices && (
                 <div className="mt-4 text-[13px]">
                   <MicroservicesBadge level={snap.microservices.level} />
-                  <span className="text-muted"> · {snap.microservices.reasons.slice(0, 2).join(", ")}</span>
+                  <span className="text-muted"> · {snap.microservices.reasons.join(" · ")}</span>
                 </div>
               )}
             </section>
@@ -163,14 +191,14 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
             <section className="card p-5" aria-labelledby="q3">
               <div className="flex items-center justify-between"><h2 id="q3" className="label">Q3 · Activity</h2><ActivityBadge level={level} /></div>
               <div className="mt-4"><HeatStrip series={snap.commitSeries ?? []} size={15} /></div>
-              <div className="mono mt-1.5 text-[10.5px] text-faint">commits per week · last 13 weeks{act?.wowChangePct != null && ` · ${act.wowChangePct > 0 ? "+" : ""}${act.wowChangePct}% vs last snapshot`}</div>
+              <div className="mono mt-1.5 text-[10.5px] text-faint">commits per week · last 13 weeks{act?.wowChangePct != null && ` · ${act.wowChangePct > 0 ? "+" : ""}${act.wowChangePct}% vs the 30 days before`}{act?.botShare ? ` · bots excluded` : ""}</div>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 {[
-                  [act?.commits30, "commits · 30d"], [act?.reposPushed30, "repos pushed · 30d"], [act?.openRoles, "open eng roles"],
+                  [act?.commits30, "commits · 30d"], [act?.reposPushed30, "repos pushed · 30d"], [act?.openRoles, act?.totalRoles ? `eng roles (of ${fmtInt(act.totalRoles)} total)` : "open eng roles"],
                   [act?.releases90, "releases · 90d"], [act?.blogPosts90, "blog posts · 90d"], [act?.talks12mo, "talks · 12mo"],
                 ].map(([n, l]) => (
                   <div key={l as string} className="rounded-input bg-raised px-3 py-2.5">
-                    <div className="mono text-[20px] font-medium leading-tight">{fmtInt((n as number) ?? 0)}</div>
+                    <div className="mono text-[20px] font-medium leading-tight">{act?.commitsKnown === false && l === "commits · 30d" ? "n/a" : fmtInt((n as number) ?? 0)}</div>
                     <div className="mt-0.5 text-[11px] text-muted">{l}</div>
                   </div>
                 ))}
@@ -238,7 +266,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
             {tab === "sources" && (
               <SourcesTab
                 companyId={company.id} admin={admin} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []}
-                jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} notes={company.notes}
+                jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} youtubeChannelId={youtubeChannelId} notes={company.notes}
                 status={snap.sourceStatus ?? {}}
                 matched={{
                   jobs: ev.find((e) => e.source === "jobs") ? `${new URL(ev.find((e) => e.source === "jobs")!.url).host}` : undefined,
@@ -264,7 +292,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
           ))}</div>
           <div className="pt-5">
             {tab === "runs" && <RunLog companyId={company.id} />}
-            {tab === "sources" && <SourcesTab companyId={company.id} admin={admin} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []} jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} notes={company.notes} status={{}} matched={{}} />}
+            {tab === "sources" && <SourcesTab companyId={company.id} admin={admin} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []} jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} youtubeChannelId={youtubeChannelId} notes={company.notes} status={{}} matched={{}} />}
           </div>
         </div>
       )}

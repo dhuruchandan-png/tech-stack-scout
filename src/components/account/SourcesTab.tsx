@@ -12,7 +12,7 @@ import { cn } from "@/lib/util";
 type Props = {
   companyId: number; admin: boolean;
   org: string | null; orgConfidence: string | null; candidates: GithubCandidate[];
-  jobProvider: string | null; jobSlug: string | null; blogRss: string | null; youtubeQuery: string | null; notes: string | null;
+  jobProvider: string | null; jobSlug: string | null; blogRss: string | null; youtubeQuery: string | null; youtubeChannelId: string | null; notes: string | null;
   status: Record<string, { state: string; staleSince?: string; detail?: string }>;
   matched: { jobs?: string; blog?: string };
 };
@@ -21,7 +21,7 @@ const DOT: Record<string, string> = { ok: "bg-verified", not_found: "bg-faint", 
 const NAMES: Record<string, string> = { github: "GitHub", jobs: "Job board", blog: "Engineering blog RSS", youtube: "YouTube talks", hn: "Hacker News" };
 
 export function SourcesTab(p: Props) {
-  const [v, setV] = useState({ githubOrg: p.org ?? "", jobBoardProvider: p.jobProvider ?? "", jobBoardSlug: p.jobSlug ?? "", blogRssUrl: p.blogRss ?? "", youtubeQuery: p.youtubeQuery ?? "", notes: p.notes ?? "" });
+  const [v, setV] = useState({ githubOrg: p.org ?? "", jobBoardProvider: p.jobProvider ?? "", jobBoardSlug: p.jobSlug ?? "", blogRssUrl: p.blogRss ?? "", youtubeQuery: p.youtubeQuery ?? "", youtubeChannelId: p.youtubeChannelId && p.youtubeChannelId !== "none" ? p.youtubeChannelId : "", notes: p.notes ?? "" });
   const [pending, start] = useTransition();
   const [chooser, setChooser] = useState(false);
   const router = useRouter();
@@ -92,7 +92,8 @@ export function SourcesTab(p: Props) {
           </div>
           <Field label="Job board slug" value={v.jobBoardSlug} onChange={(x) => setV({ ...v, jobBoardSlug: x })} ph="e.g. razorpaysoftwareprivatelimited" />
           <Field label="Blog RSS URL" value={v.blogRssUrl} onChange={(x) => setV({ ...v, blogRssUrl: x })} ph="https://…/feed" />
-          <div className="sm:col-span-2"><Field label="YouTube search query" value={v.youtubeQuery} onChange={(x) => setV({ ...v, youtubeQuery: x })} ph='"Acme" KubeCon talk' /></div>
+          <Field label="YouTube channel id" value={v.youtubeChannelId} onChange={(x) => setV({ ...v, youtubeChannelId: x })} ph={p.youtubeChannelId === "none" ? "none found automatically; paste UC…" : "UC… (auto-detected if blank)"} />
+          <Field label="YouTube search query" value={v.youtubeQuery} onChange={(x) => setV({ ...v, youtubeQuery: x })} ph='"Acme" KubeCon talk' />
           <div className="sm:col-span-2">
             <label className="label mb-1.5 block">Notes</label>
             <textarea className="input" rows={3} value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} />

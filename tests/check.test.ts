@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { checkEmail, checkOpener, checkSummary, checkTalkingPoint, citedIds, keyNouns, sanitizeGenerated, stem, stripCites, type CheckContext } from "@/lib/ai/check";
+import {
+  checkCitationFit, checkEmail, checkOpener, checkSummary, checkTalkingPoint, citedIds, evidenceTopic, keyNouns, numbersIn,
+  sanitizeGenerated, sentenceTopics, stem, stripCites, type CheckContext,
+} from "@/lib/ai/check";
 
 const ctx: CheckContext = {
   company: "Northwind Pay",
@@ -7,7 +10,7 @@ const ctx: CheckContext = {
   evidenceText: {
     E1: "How we cut CI from 22 to 9 minutes in our Go monorepo. Test sharding across 27 services cut median pipeline time",
     E2: "Platform Engineer role mentions Kubernetes and EKS",
-    E3: "Repo payments-service Go gRPC protobuf",
+    E3: "Repo payments-service Go gRPC protobuf, 64 protobuf definitions",
   },
   factsText: "Q1 Go 46%. Q2 cloud: AWS. Tools: Helm, Terraform, gRPC, EKS. 27 service repos. 64 protobuf definitions.",
 };
@@ -21,6 +24,14 @@ describe("checkOpener", () => {
     expect(r.ok).toBe(true);
   });
 
+  it("accepts the target shape: a concrete repo, a number from the evidence, one specific pain", () => {
+    const c = { ...ctx, evidenceText: { ...ctx.evidenceText, E4: "Repo pi-temporal TypeScript 44 commits", E5: "Open engineering roles: 17 mention Kubernetes" }, validRefs: new Set(["E1", "E2", "E3", "E4", "E5"]) };
+    const two = "Saw pi-temporal go up this week alongside 17 open Kubernetes roles. Curious how long CI takes when a change touches several of your Go services?";
+    expect(checkOpener(two, ["E4", "E5"], c).reasons).toContain("Opener must be one sentence"); // the opener is ONE sentence
+    const one = "Saw pi-temporal go up alongside 17 open Kubernetes roles, so how long does CI take when a change touches several of your Go services?";
+    expect(checkOpener(one, ["E4", "E5"], c).reasons).toEqual([]);
+  });
+
   it("ignores citation markers the model may have left in the text", () => {
     expect(checkOpener(`${GOOD} [E1]`.replace(".", "") + ".", ["E1", "E3"], ctx).ok).toBe(true);
   });
@@ -30,6 +41,13 @@ describe("checkOpener", () => {
     const r = checkOpener(t, ["E1", "E3"], ctx);
     expect(r.ok).toBe(false);
     expect(r.reasons.some((x) => x.includes("banned phrase"))).toBe(true);
+  });
+
+  it("fails on flattery, 'streamline' and 'opportunity to'", () => {
+    for (const w of ["impressive", "exciting", "shows how quickly", "streamline", "streamlining", "opportunity to"]) {
+      const t = `Your Go monorepo CI going from 22 to 9 minutes is ${w} for the 27 gRPC services and local dev your engineers run every day.`;
+      expect(checkOpener(t, ["E1", "E3"], ctx).reasons.some((x) => /flattery/.test(x)), w).toBe(true);
+    }
   });
 
   it("fails when it cites an evidence id that does not exist", () => {
@@ -42,11 +60,11 @@ describe("checkOpener", () => {
     expect(checkOpener(GOOD, [], ctx).reasons).toContain("Cites no evidence");
   });
 
-  it("fails on length outside 18–35 words", () => {
+  it("fails on length outside 10–30 words", () => {
     const r = checkOpener("Love your Go work.", ["E1"], ctx);
-    expect(r.reasons.some((x) => /must be 18–35/.test(x))).toBe(true);
+    expect(r.reasons.some((x) => /must be 10–30/.test(x))).toBe(true);
     const long = Array(40).fill("word").join(" ") + ".";
-    expect(checkOpener(long, ["E1"], ctx).reasons.some((x) => /must be 18–35/.test(x))).toBe(true);
+    expect(checkOpener(long, ["E1"], ctx).reasons.some((x) => /must be 10–30/.test(x))).toBe(true);
   });
 
   it("fails when it names something that is not in the cited evidence (a made-up claim)", () => {
@@ -54,11 +72,28 @@ describe("checkOpener", () => {
     const r = checkOpener(t, ["E1"], ctx);
     expect(r.ok).toBe(false);
     expect(r.reasons.some((x) => x.includes("Snowflake"))).toBe(true);
+    expect(r.reasons.some((x) => /None of the things it names/.test(x))).toBe(true);
   });
 
   it("fails a generic line that would fit any company", () => {
     const t = "We help engineering teams ship faster with a developer productivity tool that speeds up every build and test cycle for you.";
     expect(checkOpener(t, ["E1"], ctx).reasons.some((x) => x.startsWith("Names nothing specific"))).toBe(true);
+  });
+
+  it("fails when the named thing appears only in a URL, not in the cited item's title or snippet", () => {
+    const c = {
+      ...ctx,
+      validRefs: new Set([...ctx.validRefs, "E5"]),
+      evidenceText: { ...ctx.evidenceText, E5: "title x https://github.com/acme/foo-bar" },
+      evidenceCore: { E5: "title x" },
+    };
+    const t = "Your foo-bar repo suggests build speed matters across your local environment for engineers shipping daily.";
+    expect(checkOpener(t, ["E5"], c).reasons.some((x) => /None of the things it names/.test(x))).toBe(true);
+  });
+
+  it("fails when it does not connect to a specific pain", () => {
+    const t = "Your Go repository activity from 22 to 9 stood out, because 27 gRPC systems across the company are genuinely something to read about.";
+    expect(checkOpener(t, ["E1", "E3"], ctx).reasons.some((x) => /Does not connect to a specific pain/.test(x))).toBe(true);
   });
 
   it("fails on placeholders", () => {
@@ -79,18 +114,61 @@ describe("checkOpener", () => {
 
   it("accepts a lowercase repo name as the specific thing when it appears in the evidence", () => {
     const c2 = { ...ctx, evidenceText: { ...ctx.evidenceText, E3: "Repo ndc-mongodb Go" } };
-    const t = "With your team pushing updates to ndc-mongodb, streamlining local build pipelines can directly boost your engineering productivity across every single service.";
+    const t = "With your team pushing updates to ndc-mongodb, shortening local build pipelines can directly boost your engineering productivity across every single service.";
     expect(checkOpener(t, ["E3"], c2).reasons).toEqual([]);
+  });
+
+  it("fails when a number in the opener is not in the cited items", () => {
+    const t = "Your post on cutting Go monorepo CI from 22 to 9 minutes stood out, and with 99 gRPC services we help teams get that speed in local dev.";
+    expect(checkOpener(t, ["E1", "E3"], ctx).reasons.some((x) => /number 99/.test(x))).toBe(true);
   });
 
   it("fails on two sentences", () => {
     const t = "Your Go monorepo CI post from 22 to 9 minutes stood out. With 27 gRPC services we help teams get that speed in local dev and testing.";
     expect(checkOpener(t, ["E1", "E3"], ctx).reasons).toContain("Opener must be one sentence");
   });
+});
 
-  it("fails when it does not connect to developer productivity", () => {
-    const t = "Your Go monorepo post from 22 to 9 minutes stood out because 27 gRPC services across the company are genuinely impressive to read about.";
-    expect(checkOpener(t, ["E1", "E3"], ctx).reasons).toContain("Does not connect to developer productivity");
+describe("checkCitationFit: the right kind of evidence, and numbers that match", () => {
+  const c: CheckContext = {
+    ...ctx,
+    validRefs: new Set(["E1", "E2", "E3", "E4"]),
+    evidenceText: { E1: "Language mix TypeScript 62%, Go 10%", E2: "Build activity 160 commits in 30 days across 19 repos pushed", E3: "17 open engineering roles; roles name Kubernetes ×4", E4: "Blog: Go monorepo CI from 22 to 9 minutes" },
+    evidenceTopic: { E1: "language", E2: "activity", E3: "jobs", E4: "blog" },
+  };
+
+  it("an activity sentence cannot cite the language item (the Temporal bug)", () => {
+    const r = checkCitationFit("The team made 160 commits across 19 repos in the last month.", ["E1"], c);
+    expect(r.some((x) => /about activity cites language/.test(x))).toBe(true);
+    expect(r.some((x) => /number 160/.test(x))).toBe(true);
+  });
+  it("passes when the sentence cites the activity item", () => {
+    expect(checkCitationFit("The team made 160 commits across 19 repos in the last month.", ["E2"], c)).toEqual([]);
+  });
+  it("a hiring sentence needs a jobs item; citing a language item fails", () => {
+    expect(checkCitationFit("They have 17 open engineering roles.", ["E3"], c)).toEqual([]);
+    expect(checkCitationFit("They have 17 open engineering roles.", ["E1"], c).length).toBeGreaterThan(0);
+  });
+  it("a tool claim may cite a jobs item that names the tool", () => {
+    expect(checkCitationFit("Their engineering roles name Kubernetes.", ["E3"], c)).toEqual([]);
+  });
+  it("every number must appear in the cited item, but time windows are labels", () => {
+    expect(checkCitationFit("They made 160 commits in 30 days.", ["E2"], c)).toEqual([]);
+    expect(checkCitationFit("They made 170 commits in 30 days.", ["E2"], c).some((x) => /number 170/.test(x))).toBe(true);
+  });
+  it("sentenceTopics, numbersIn and evidenceTopic", () => {
+    expect(sentenceTopics("They run Kubernetes on AWS.")).toContain("infra");
+    expect(sentenceTopics("Written in Go and TypeScript.")).toContain("language");
+    expect(sentenceTopics("We should go and look.")).not.toContain("language");
+    expect(sentenceTopics("The team is hiring 12 engineers.")).toContain("jobs");
+    expect(numbersIn("1,225 commits in 30 days across 49 repos, 62% Go")).toEqual(["1225", "49", "62"]);
+    expect(evidenceTopic("github", "languages")).toBe("language");
+    expect(evidenceTopic("github", "activity")).toBe("activity");
+    expect(evidenceTopic("github", "cloud")).toBe("infra");
+    expect(evidenceTopic("github", "microservices")).toBe("infra");
+    expect(evidenceTopic("github", "repo")).toBe("repo");
+    expect(evidenceTopic("jobs", "jobsummary")).toBe("jobs");
+    expect(evidenceTopic("youtube", "talk")).toBe("talk");
   });
 });
 
@@ -102,14 +180,14 @@ describe("checkTalkingPoint", () => {
   it("does not require talking points to name a specific thing (only the opener must)", () => {
     expect(checkTalkingPoint("They are hiring more infrastructure engineers this quarter.", ["E2"], ctx).reasons.some((r) => r.startsWith("Names nothing"))).toBe(false);
   });
-  it("matches possessives and plural acronyms to their base form in the evidence", () => {
-    const c4 = { ...ctx, evidenceText: { ...ctx.evidenceText, E1: "Talk by Priya Arora on our SDK and platform plugins" } };
-    expect(checkTalkingPoint("Priya Arora's SDKs and plugins shape their platform.", ["E1"], c4).ok).toBe(true);
-  });
   it("treats 4500 and 4,500 as the same number", () => {
     const c3 = { ...ctx, evidenceText: { ...ctx.evidenceText, E1: "4,500 stars across public repos" } };
     expect(checkTalkingPoint("Their repos hold 4500 stars in total.", ["E1"], c3).ok).toBe(true);
     expect(checkTalkingPoint("Their repos hold 9999 stars in total.", ["E1"], c3).ok).toBe(false);
+  });
+  it("matches possessives and plural acronyms to their base form in the evidence", () => {
+    const c4 = { ...ctx, evidenceText: { ...ctx.evidenceText, E1: "Talk by Priya Arora on our SDK and platform plugins" } };
+    expect(checkTalkingPoint("Priya Arora's SDKs and plugins shape their platform.", ["E1"], c4).ok).toBe(true);
   });
   it("fails when it is long", () => {
     expect(checkTalkingPoint(Array(45).fill("word").join(" "), ["E1"], ctx).reasons).toContain("Talking point is longer than 40 words");
@@ -132,12 +210,23 @@ describe("checkSummary", () => {
   });
 
   it("fails on an unknown evidence id", () => {
-    const bad = p1.replace("[E3]", "[E9]");
-    expect(checkSummary([bad, p2], ctx).reasons.join(" ")).toMatch(/does not exist: E9/);
+    expect(checkSummary([p1.replace("[E3]", "[E9]"), p2], ctx).reasons.join(" ")).toMatch(/does not exist: E9/);
   });
 
   it("fails on a missing or too-short paragraph", () => {
     expect(checkSummary(["", p2], ctx).reasons.join(" ")).toMatch(/Paragraph 1 is missing/);
+  });
+
+  it("fails a sentence whose citation is the wrong kind (activity claim citing the language item)", () => {
+    const c: CheckContext = {
+      ...ctx,
+      evidenceText: { ...ctx.evidenceText, E1: "Language mix TypeScript 62%", E2: "Build activity 160 commits in 30 days across 19 repos pushed" },
+      evidenceTopic: { E1: "language", E2: "activity", E3: "repo" },
+    };
+    const bad = "Northwind Pay is shipping fast, with 160 commits across 19 repos in the last 30 days and steady releases from its teams [E1]. The rest of the paragraph pads the length out so that it clears the minimum word count for a summary [E2].";
+    const r = checkSummary([bad, p2], c);
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/Paragraph 1: A sentence about activity cites language/);
   });
 });
 
@@ -149,9 +238,13 @@ describe("checkEmail", () => {
   it("fails a subject over 7 words", () => expect(checkEmail({ ...good, subject: "One two three four five six seven eight nine" }, ctx).reasons).toContain("Subject is longer than 7 words"));
   it("fails a body over 110 words", () => expect(checkEmail({ ...good, body: Array(120).fill("word").join(" ") + " Nikhil" }, ctx).reasons.some((r) => /must be ≤ 110/.test(r))).toBe(true));
   it("fails without the Nikhil sign-off", () => expect(checkEmail({ ...good, body: body.replace("\n\nNikhil", "") }, ctx).reasons.some((r) => /sign-off/.test(r))).toBe(true));
-  it("fails on banned phrases and missing ids", () => {
+  it("fails on banned phrases, flattery and missing ids", () => {
     expect(checkEmail({ ...good, body: "I hope this email finds you well. " + body }, ctx).ok).toBe(false);
+    expect(checkEmail({ ...good, body: body.replace("stood out", "was impressive") }, ctx).reasons.some((r) => /flattery/.test(r))).toBe(true);
     expect(checkEmail({ ...good, evidence_ids: ["E42"] }, ctx).reasons.join(" ")).toMatch(/does not exist: E42/);
+  });
+  it("fails a number that is not in the cited items", () => {
+    expect(checkEmail({ ...good, body: body.replace("27 gRPC", "88 gRPC") }, ctx).reasons.some((r) => /number 88/.test(r))).toBe(true);
   });
 });
 

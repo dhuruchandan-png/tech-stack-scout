@@ -25,6 +25,11 @@ export function SettingsForm(p: Props) {
       <section className="card p-5 lg:col-span-2">
         <div className="label mb-1.5">Product notes · optional, feeds Gemini</div>
         <p className="mb-3 text-[12.5px] text-muted">What your product does and who it fits. Gemini uses it to explain why an account&apos;s setup matters. It never overrides evidence.</p>
+        {!notes.trim() && (
+          <p className="mb-2 rounded-input border border-change/40 bg-change/10 px-3 py-2 text-[12.5px] text-change" role="alert">
+            Product notes are empty, so Gemini does not know what Nikhil sells and first lines will be generic. Describe the product and who it fits.
+          </p>
+        )}
         <textarea className="input" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. We sell a developer productivity tool that speeds up CI and local testing for teams running microservices on Kubernetes (AWS or GCP)." />
       </section>
 
@@ -70,6 +75,11 @@ export function SettingsForm(p: Props) {
         <p className="text-[12.5px] text-muted">
           {p.testMode ? <>Test mode is <b className="text-change">on</b>: every email goes to <span className="mono">{p.testEmail || "(TEST_EMAIL not set)"}</span>.</> : <>Test mode is off. Emails go to the actual internal recipient.</>}
         </p>
+        {p.testMode && !p.testEmail && (
+          <p className="mt-2 rounded-input border border-alert/40 bg-alert/10 px-3 py-2 text-[12.5px] text-alert" role="alert">
+            TEST_EMAIL is not set, so every email send is blocked. Set TEST_EMAIL (and NIKHIL_EMAIL) in Vercel, then redeploy.
+          </p>
+        )}
         <div className="mt-3 flex gap-2">
           <input className="input" placeholder="internal address" value={testTo} onChange={(e) => setTestTo(e.target.value)} aria-label="Test email recipient" />
           <button className="btn" disabled={pending || !testTo} onClick={() => guard() && start(async () => { const r = await sendTestEmail(testTo); r.ok ? toast.success(`Test email sent to ${r.deliveredTo}.`) : toast.error(r.error); })}>Send test</button>

@@ -23,7 +23,11 @@ export type RepoInfo = {
   primaryLanguage: string | null;
   languages: { name: string; color: string | null; size: number }[];
   topics: string[];
+  createdAt?: string | null;
+  /** false when the commit-history fields were not fetched (large-org fallback) */
+  commitsKnown?: boolean;
   commits30: number;
+  commits60?: number;
   commits90: number;
   lastReleaseAt: string | null;
   defaultBranch: string | null;
@@ -41,6 +45,8 @@ export type GithubData = {
   files: Record<string, string>;
   /** 13 weekly commit totals, oldest -> newest */
   commitSeries: number[];
+  /** estimated share (0-1) of recent commits made by bots */
+  botShare?: number;
 };
 
 export type GithubMatch = {

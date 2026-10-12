@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS companies (
   job_board_slug          text,
   blog_rss_url            text,
   youtube_query           text,
+  youtube_channel_id      text,
   hubspot_company_id      text,
   notes                   text
 );
@@ -139,7 +140,7 @@ CREATE TABLE IF NOT EXISTS settings (
   internal_allowlist jsonb DEFAULT '[]'::jsonb,
   brief_recipients   jsonb DEFAULT '[]'::jsonb
 );
-INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+INSERT INTO settings (id, product_notes) VALUES (1, 'Nikhil sells a developer productivity tool that speeds up CI pipelines and local testing for engineering teams running many services (containers, Kubernetes, gRPC, monorepos).') ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS qa_messages (
   id           serial PRIMARY KEY,

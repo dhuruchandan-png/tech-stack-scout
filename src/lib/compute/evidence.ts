@@ -1,4 +1,4 @@
-import type { InfraResult, LanguageShare } from "@/db/schema";
+import type { ActivityResult, InfraResult, LanguageShare, MicroservicesResult } from "@/db/schema";
 import { findTech, snippetAround } from "@/lib/compute/techdict";
 import { pct } from "@/lib/compute/languages";
 import type { BlogData, EvidenceDraft, GithubData, HnData, JobsData, YoutubeData } from "@/lib/types";
@@ -11,6 +11,9 @@ type Inputs = {
   github?: GithubData | null;
   languages?: LanguageShare[];
   infra?: InfraResult | null;
+  activity?: ActivityResult | null;
+  microservices?: MicroservicesResult | null;
+  docsExcluded?: number;
   jobs?: JobsData | null;
   blog?: BlogData | null;
   youtube?: YoutubeData | null;
@@ -18,10 +21,58 @@ type Inputs = {
 };
 
 const d = (s?: string | null) => (s ? new Date(s) : null);
+const n = (x: number) => new Intl.NumberFormat("en-US").format(x);
+
+const BOARD_URL: Record<string, (slug: string) => string> = {
+  greenhouse: (s) => `https://boards.greenhouse.io/${s}`,
+  lever: (s) => `https://jobs.lever.co/${s}`,
+  ashby: (s) => `https://jobs.ashbyhq.com/${s}`,
+};
+
+/** "Runs on / deploys to" vs "Integrates with / supports", with strengths, as one citable sentence. */
+export function cloudSummary(infra: InfraResult | null | undefined): string {
+  const cs = infra?.cloudStrength ?? [];
+  const fmt = (g: "runs" | "integrates") =>
+    cs.filter((c) => c.group === g).map((c) => `${c.cloud} (${c.strength}, ${c.signals} signal${c.signals === 1 ? "" : "s"} from ${c.origins} ${c.origins === 1 ? "origin" : "origins"})`).join("; ");
+  const runs = fmt("runs"), integ = fmt("integrates");
+  if (!runs && !integ) return "No cloud deployment signals found in public code or open roles.";
+  return `Runs on / deploys to: ${runs || "none found"}. Integrates with / supports: ${integ || "none found"}.`;
+}
 
 /** Step 7: every signal becomes an evidence item with source, url, title, snippet, date. */
 export function buildEvidence(i: Inputs): EvidenceDraft[] {
   const out: EvidenceDraft[] = [];
+
+  // Computed facts as citable items, so a sentence about activity / jobs / cloud has the RIGHT thing to cite.
+  const orgUrl = i.github?.orgUrl ?? "";
+  if (i.activity && orgUrl && i.activity.commitsKnown !== false) {
+    const a = i.activity;
+    out.push({
+      source: "github", kind: "activity", title: "Build activity (last 30 days)",
+      snippet: `${n(a.commits30)} commits in 30 days across ${n(a.reposPushed30)} repos pushed; ${n(a.commits90)} commits in 90 days; ${n(a.releases90)} repos shipped a release in 90 days; ${n(a.activeRepos ?? 0)} active repos${a.botShare ? " (bot commits excluded)" : ""}`,
+      url: orgUrl, observedAt: new Date(), meta: { computed: true },
+    });
+  }
+  if (i.jobs && i.activity) {
+    const mentions = i.infra?.jobMentions?.length ? `; roles name ${i.infra.jobMentions.slice(0, 6).map((m) => `${m.name} ×${m.count}`).join(", ")}` : "";
+    out.push({
+      source: "jobs", kind: "jobsummary", title: "Open engineering roles",
+      snippet: `${n(i.jobs.engineeringJobs.length)} open engineering roles (of ${n(i.jobs.totalJobs)} total roles)${mentions}`,
+      url: (BOARD_URL[i.jobs.provider] ?? (() => i.jobs!.engineeringJobs[0]?.url ?? ""))(i.jobs.slug), observedAt: new Date(), meta: { computed: true },
+    });
+  }
+  if (orgUrl && i.infra && (i.infra.cloudStrength?.length || i.infra.items.length)) {
+    out.push({
+      source: "github", kind: "cloud", title: "Cloud footprint (from public code and open roles)",
+      snippet: cloudSummary(i.infra), url: orgUrl, observedAt: new Date(), meta: { computed: true },
+    });
+  }
+  if (orgUrl && i.microservices && i.microservices.level !== "unknown") {
+    out.push({
+      source: "github", kind: "microservices", title: `Microservices signal: ${i.microservices.level}`,
+      snippet: i.microservices.reasons.join("; "), url: orgUrl, observedAt: new Date(), meta: { computed: true },
+    });
+  }
 
   if (i.github) {
     const g = i.github;
@@ -29,7 +80,7 @@ export function buildEvidence(i: Inputs): EvidenceDraft[] {
       const top = i.languages.slice(0, 5).map((l) => `${l.name} ${pct(l.share)}%`).join(", ");
       out.push({
         source: "github", kind: "languages", title: `Language mix across active public repos`,
-        snippet: top, url: g.orgUrl, observedAt: new Date(), meta: { org: g.org },
+        snippet: `${top}${i.docsExcluded ? ` (${i.docsExcluded} docs/example repos excluded)` : ""}`, url: g.orgUrl, observedAt: new Date(), meta: { org: g.org },
       });
     }
     const active = g.repos.filter((r) => !r.isFork && !r.isArchived).slice(0, 8);
@@ -103,6 +154,7 @@ export function assignRefs(items: EvidenceDraft[]): Ref[] {
 export function selectForGemini(items: Ref[], limit = MAX_FOR_GEMINI): Ref[] {
   if (items.length <= limit) return items;
   const rank = (e: Ref) => {
+    if (e.meta?.computed) return 100000; // computed facts are always sent to Gemini
     const base = { jobs: 4, blog: 4, youtube: 3, hn: 3, github: e.kind === "infra" ? 3 : e.kind === "languages" ? 5 : 2 }[e.source] ?? 1;
     const age = e.observedAt ? (Date.now() - e.observedAt.getTime()) / 86_400_000 : 365;
     return base * 100 - Math.min(age, 365) / 4;

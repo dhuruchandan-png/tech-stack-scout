@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { ADMIN_COOKIE, adminToken, checkPasscode, isAdmin, requireAdmin } from "@/lib/auth";
-import type { CheckContext } from "@/lib/ai/check";
+import { gateByConfidence, makeCheckContext } from "@/lib/ai/context";
+import { setYoutubeChannelId } from "@/db/raw";
 import { answerQuestion, generateBrief, generateEmail, recheckEmail, recheckOpener, retrieveEvidence } from "@/lib/ai/generate";
 import { GeminiUnavailable } from "@/lib/ai/gemini";
 import { normalizeDomain } from "@/lib/domain";
@@ -39,7 +40,7 @@ export async function lockAdmin(): Promise<R> {
 }
 
 export async function adminStatus() {
-  return { admin: await isAdmin(), configured: !!process.env.ADMIN_PASSCODE };
+  return { admin: await isAdmin(), configured: !!process.env.ADMIN_PASSCODE, open: process.env.OPEN_ACCESS === "true" };
 }
 
 /* ---------------- watchlist ---------------- */
@@ -106,13 +107,15 @@ export async function startRefresh(companyId: number): Promise<R<{ runId: number
 
 export async function saveOverrides(
   companyId: number,
-  v: { githubOrg?: string; jobBoardProvider?: string; jobBoardSlug?: string; blogRssUrl?: string; youtubeQuery?: string; notes?: string },
+  v: { githubOrg?: string; jobBoardProvider?: string; jobBoardSlug?: string; blogRssUrl?: string; youtubeQuery?: string; youtubeChannelId?: string; notes?: string },
 ): Promise<R> {
   try {
     await requireAdmin();
     const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
     const provider = clean(v.jobBoardProvider);
     if (provider && !["greenhouse", "lever", "ashby"].includes(provider)) return { ok: false, error: "Job board must be greenhouse, lever or ashby." };
+    const channel = clean(v.youtubeChannelId)?.replace(/^https?:\/\/(www\.)?youtube\.com\/channel\//i, "").replace(/[/?#].*$/, "") ?? null;
+    if (channel && channel !== "none" && !/^UC[\w-]{22}$/.test(channel)) return { ok: false, error: "A YouTube channel id looks like UCxxxxxxxxxxxxxxxxxxxxxx (24 characters). Copy it from the channel's /channel/… URL." };
     const gh = clean(v.githubOrg)?.replace(/^https?:\/\/github\.com\//i, "").replace(/\/.*$/, "") ?? null;
     const [cur] = await getDb().select().from(companies).where(eq(companies.id, companyId));
     const changed = gh !== (cur?.githubOrg ?? null);
@@ -120,6 +123,7 @@ export async function saveOverrides(
       githubOrg: gh, githubMatchConfidence: !gh ? null : changed ? "high" : cur?.githubMatchConfidence ?? "high", jobBoardProvider: provider, jobBoardSlug: clean(v.jobBoardSlug),
       blogRssUrl: clean(v.blogRssUrl), youtubeQuery: clean(v.youtubeQuery), notes: clean(v.notes),
     }).where(eq(companies.id, companyId));
+    await setYoutubeChannelId(companyId, channel);
     revalidatePath("/accounts", "layout");
     return { ok: true };
   } catch (e) {
@@ -154,11 +158,7 @@ async function loadContext(companyId: number) {
     serviceRepoCount: snap.activity?.serviceRepos ?? 0,
     sourceNotes: Object.entries(snap.sourceStatus ?? {}).filter(([, s]) => s.state !== "ok").map(([k, s]) => `${k}: ${s.state === "failed" ? `failed (showing data since ${s.staleSince ?? "earlier"})` : "none found"}`),
   });
-  const ctx: CheckContext = {
-    company: company.name, validRefs: new Set(refs.map((r) => r.ref)),
-    evidenceText: Object.fromEntries(refs.map((r) => [r.ref, `${r.title} ${r.snippet} ${r.url} ${JSON.stringify(r.meta ?? {})}`])),
-    factsText,
-  };
+  const ctx = makeCheckContext(company.name, refs, factsText);
   return { company, snap, refs, brief, ctx, factsText };
 }
 
@@ -172,10 +172,13 @@ export async function regenerateBrief(companyId: number): Promise<R> {
       { company: company.name, facts: factsText, productNotes: s.productNotes, evidence: selectForGemini(refs).map((e) => ({ ref: e.ref, source: e.source, title: e.title, snippet: e.snippet, date: e.observedAt?.toISOString().slice(0, 10) ?? null })) },
       ctx,
     );
+    const gated = gateByConfidence(r.checkStatus, r.checkReasons, snap.confidence);
+    const unknowns = [...r.brief.unknowns];
+    if (snap.activity?.sdkHeavy) unknowns.push("Mostly public SDKs: their internal stack may differ from what the public code suggests.");
     const values = {
       summaryP1: r.brief.summary_p1, summaryP2: r.brief.summary_p2, openerText: r.brief.opener.text, openerEvidenceIds: r.brief.opener.evidence_ids,
-      hookType: r.brief.opener.hook_type, talkingPoints: r.brief.talking_points, unknowns: r.brief.unknowns, checkStatus: r.checkStatus,
-      checkReasons: r.checkReasons, model: r.usage.model, inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: r.usage.costUsd,
+      hookType: r.brief.opener.hook_type, talkingPoints: r.brief.talking_points, unknowns, checkStatus: gated.status,
+      checkReasons: gated.reasons, model: r.usage.model, inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: r.usage.costUsd,
     };
     await getDb().insert(briefs).values({ snapshotId: snap.id, ...values }).onConflictDoUpdate({ target: briefs.snapshotId, set: values });
     revalidatePath(`/accounts/${company.domain}`);
@@ -190,7 +193,8 @@ export async function saveOpenerEdit(companyId: number, text: string, evidenceId
   try {
     await requireAdmin();
     const { snap, ctx, company } = await loadContext(companyId);
-    const r = recheckOpener(text.trim(), evidenceIds, ctx);
+    const r0 = recheckOpener(text.trim(), evidenceIds, ctx);
+    const r = (() => { const g = gateByConfidence(r0.checkStatus, r0.checkReasons, snap.confidence); return { checkStatus: g.status, checkReasons: g.reasons }; })();
     await getDb().update(briefs).set({ openerText: text.trim(), openerEvidenceIds: evidenceIds, checkStatus: r.checkStatus, checkReasons: r.checkReasons }).where(eq(briefs.snapshotId, snap.id));
     revalidatePath(`/accounts/${company.domain}`);
     return { ok: true, checkStatus: r.checkStatus, reasons: r.checkReasons };
@@ -223,6 +227,7 @@ export async function createDraft(companyId: number, recipient?: { name?: string
     await requireAdmin();
     const { company, snap, refs, brief, ctx } = await loadContext(companyId);
     if (!brief?.openerText) return { ok: false, error: "No opener yet. Run a refresh first." };
+    if (brief.checkStatus !== "verified") return { ok: false, error: "This opener is marked Needs review, so it cannot become a draft yet. Edit it until the check passes (or regenerate it), then draft." };
     const e = await generateEmail(
       {
         company: company.name, opener: brief.openerText, summary: `${brief.summaryP1 ?? ""} ${brief.summaryP2 ?? ""}`.replace(/\[E\d+\]/g, ""),
@@ -371,6 +376,7 @@ export async function markSent(draftId: number): Promise<R<{ hubspot: string }>>
 }
 
 export async function loadContacts(companyId: number): Promise<HsContact[]> {
+  if (!(await isAdmin())) return []; // HubSpot contacts are private
   return listContacts(companyId);
 }
 
@@ -380,7 +386,7 @@ export async function saveSettings(v: { productNotes: string; internalAllowlist:
   try {
     await requireAdmin();
     const emails = (a: string[]) => [...new Set(a.map((x) => x.trim().toLowerCase()).filter(Boolean))];
-    const vals = { productNotes: v.productNotes.trim() || null, internalAllowlist: emails(v.internalAllowlist), briefRecipients: emails(v.briefRecipients) };
+    const vals = { productNotes: v.productNotes.trim(), internalAllowlist: emails(v.internalAllowlist), briefRecipients: emails(v.briefRecipients) };
     await getDb().insert(settings).values({ id: 1, ...vals }).onConflictDoUpdate({ target: settings.id, set: vals });
     revalidatePath("/settings");
     return { ok: true };

@@ -1,6 +1,6 @@
 -- Seed watchlist: 16 real companies. Paste into the Neon SQL editor after 0000_init.sql.
 -- GitHub orgs and job-board slugs below were verified against the live APIs on 2026-10-11.
--- Freshworks has NO public GitHub org, so it shows the honest Low-confidence path.
+-- Freshworks' public code lives in github.com/freshworks-developers (not the empty freshworks-org).
 -- Zerodha, Postman, Hasura, Chargebee, BrowserStack and HashiCorp have no public Greenhouse/Lever/Ashby board
 -- under the guessed slugs, so they show "Not found" for jobs until an override is set.
 -- Re-running is safe (domain is unique).
@@ -10,7 +10,7 @@ INSERT INTO companies (name, domain, github_org, github_match_confidence, job_bo
   ('Zerodha',      'zerodha.com',     'zerodha',     'high', NULL, NULL),
   ('Postman',      'postman.com',     'postmanlabs', 'high', NULL, NULL),
   ('Hasura',       'hasura.io',       'hasura',      'high', NULL, NULL),
-  ('Freshworks',   'freshworks.com',  NULL,          NULL,   NULL, NULL),
+  ('Freshworks',   'freshworks.com',  'freshworks-developers', 'high', NULL, NULL),
   ('Chargebee',    'chargebee.com',   'chargebee',   'high', NULL, NULL),
   ('BrowserStack', 'browserstack.com','browserstack','high', NULL, NULL),
   ('Atlan',        'atlan.com',       'atlanhq',     'high', 'ashby', 'atlan'),

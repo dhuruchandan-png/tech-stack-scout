@@ -28,7 +28,7 @@ export type Row = {
 type Filters = { q: string; cloud: string; lang: string; tool: string; ms: string; activity: string; confidence: string; changed: boolean };
 const EMPTY: Filters = { q: "", cloud: "", lang: "", tool: "", ms: "", activity: "", confidence: "", changed: false };
 type SortKey = "name" | "activity" | "confidence" | "freshness" | "microservices";
-const ORDER = { high: 3, medium: 2, low: 1, dormant: 0, strong: 3, some: 2, none: 1, unknown: 0 } as Record<string, number>;
+const ORDER = { high: 3, medium: 2, low: 1, dormant: 0, strong: 3, medium: 2.5, some: 2.5, weak: 1.5, none: 1, unknown: 0 } as Record<string, number>;
 
 const COLS = [
   { key: "q1", label: "Q1 · Languages" }, { key: "q2", label: "Q2 · Cloud & infra" }, { key: "ms", label: "Microservices" },
@@ -152,7 +152,7 @@ export function WatchlistTable({ rows, removed, admin, openAdd, initial }: { row
         </div>
         {[
           { k: "cloud", label: "Cloud", opts: opts.clouds }, { k: "lang", label: "Language", opts: opts.langs }, { k: "tool", label: "Infra tool", opts: opts.tools },
-          { k: "ms", label: "Microservices", opts: ["strong", "some", "none", "unknown"] }, { k: "activity", label: "Activity", opts: ["high", "medium", "low", "dormant"] },
+          { k: "ms", label: "Microservices", opts: ["strong", "medium", "weak", "none", "unknown"] }, { k: "activity", label: "Activity", opts: ["high", "medium", "low", "dormant"] },
           { k: "confidence", label: "Confidence", opts: ["high", "medium", "low"] },
         ].map((f) => (
           <select key={f.k} className="input !w-auto !pr-8 capitalize" value={(filters as unknown as Record<string, string>)[f.k]} onChange={(e) => setFilters({ ...filters, [f.k]: e.target.value })} aria-label={f.label}>

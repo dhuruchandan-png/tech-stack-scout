@@ -6,7 +6,7 @@ import { DiffView } from "@/components/ui/DiffView";
 import { ConfidenceMeter } from "@/components/ui/Pills";
 import { EmptyState, SetupNotice } from "@/components/ui/States";
 import { RadarSweep } from "@/components/viz/RadarSweep";
-import { callTheseFirst, getAccounts, getSystemHealth } from "@/lib/queries";
+import { callTheseFirst, getAccounts, getSettings, getSystemHealth } from "@/lib/queries";
 import { nextWeeklyRefresh, safe } from "@/lib/safe";
 import { freshnessOf } from "@/lib/util";
 
@@ -16,10 +16,11 @@ export default async function TodayPage() {
   const res = await safe(async () => {
     const accts = await getAccounts();
     const health = await getSystemHealth(accts);
-    return { accts, health };
+    const settings = await getSettings();
+    return { accts, health, notesEmpty: !(settings.productNotes ?? "").trim() };
   });
   if (!res.ok) return <SetupNotice error={res.error} />;
-  const { accts, health } = res.data;
+  const { accts, health, notesEmpty } = res.data;
 
   const now = new Date();
   const next = nextWeeklyRefresh(now);
@@ -44,6 +45,16 @@ export default async function TodayPage() {
   return (
     <div>
       <HealthStrip h={health} />
+
+      {notesEmpty && (
+        <div className="mt-4 flex items-start gap-3 rounded-card border border-change/40 bg-change/10 px-4 py-3 text-[13px] text-change" role="alert">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <b>Product notes are empty.</b> Gemini does not know what Nikhil sells, so first lines will be generic.{" "}
+            <Link href="/settings" className="underline">Add them in Settings</Link>.
+          </span>
+        </div>
+      )}
 
       <section className="topo-wrap relative">
         <div className="topo absolute inset-x-0 top-0 h-[300px]" aria-hidden="true" />

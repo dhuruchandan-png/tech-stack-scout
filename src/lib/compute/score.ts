@@ -26,7 +26,7 @@ export function callFirstScore(i: ScoreInput): { score: number; reason: string }
   if (i.activity?.level === "high") { score += 4; reasons.push({ w: 4, t: "High build activity" }); }
   else if (i.activity?.level === "medium") score += 2;
   if (i.microservices?.level === "strong") { score += 3; reasons.push({ w: 3, t: "Strong microservices signal" }); }
-  else if (i.microservices?.level === "some") score += 1;
+  else if (i.microservices?.level === "medium" || i.microservices?.level === "some") score += 1;
   if (i.clouds.length) { score += 2; reasons.push({ w: 2, t: `Visible on ${i.clouds.join(" + ")}` }); }
   if (i.openerVerified) { score += 3; reasons.push({ w: 3, t: "Verified opener ready" }); }
   if (i.alreadyContacted) score -= 6;

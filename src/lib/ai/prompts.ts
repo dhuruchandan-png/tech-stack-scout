@@ -12,7 +12,9 @@ HARD RULES
 - Paragraph 2 (summary_p2): what is happening now: activity, hiring, recent posts and talks, what changed vs last week, and why it matters for a developer productivity tool.
 - Each paragraph is 55–95 words. Plain, specific, no marketing fluff, no hedging like "it seems" or "appears to".
 - If confidence is low, say plainly what is missing.
-- The opener (opener.text) is ONE sentence of 18–35 words, written to the prospect ("Your…", "With…"). It must name one concrete, verifiable thing taken from the cited evidence (a repo, tool, role, post or talk) and connect it to developer productivity. Do NOT put citation markers in the opener text; list its evidence ids in opener.evidence_ids.
+- CITE THE RIGHT KIND OF EVIDENCE. Put the citation on the item that actually contains the fact: commits, repos pushed and releases -> the "Build activity" item; languages -> the "Language mix" item; cloud, tool and architecture claims -> the cloud, microservices or infra items, or job items that name the tool; hiring -> job items; blog and talk claims -> blog or talk items. Never cite the language item for activity or hiring. Every number you write must appear in a cited item.
+- The opener (opener.text) is ONE sentence of at most 30 words, written to the prospect. It must: (a) name ONE concrete thing that appears in the title or snippet of an item you cite (a repo name, a tool, a job title, a blog post title, a release); (b) connect it to ONE specific pain the product solves: CI time, flaky or slow tests, builds, or local environment setup across many services. It must not flatter ("impressive", "exciting", "shows how quickly"), must not say "streamline" or "opportunity to", and must not use placeholders. Do NOT put citation markers in the opener text; list its evidence ids in opener.evidence_ids.
+  Good: "Saw pi-temporal go up this week alongside 17 open Kubernetes roles. Curious how long CI takes when a change touches several of your Go services?"
 - Banned in every output: ${BANNED_PHRASES.map((b) => `"${b}"`).join(", ")}, any {placeholder}, and anything that would fit any company.
 - talking_points: exactly 3, each one short sentence (max 30 words) with its own evidence_ids.
 - unknowns: things a salesperson would want to know that the evidence does not cover (can be empty).
@@ -68,7 +70,7 @@ export const EMAIL_SYSTEM = `You write a short, human, plain outreach email from
 - subject: at most 7 words, specific, no clickbait.
 - body: at most 110 words. Start directly with the opener sentence (no greeting line with a name). Then 2–3 lines on why it matters for how they build, grounded in the evidence. End with a soft call to action for a 20-minute call. Sign off with a new line and just "Nikhil".
 - Use ONLY the provided evidence. List the ids you relied on in evidence_ids. Do not put citation markers in the text.
-- No hype. Banned: ${BANNED_PHRASES.map((b) => `"${b}"`).join(", ")}, any {placeholder}.`;
+- No hype, no flattery, no "streamline", no "opportunity to". Banned: ${BANNED_PHRASES.map((b) => `"${b}"`).join(", ")}, any {placeholder}.`;
 
 export const EMAIL_SCHEMA = S.obj({ subject: S.str, body: S.str, evidence_ids: S.strArray });
 export type EmailOutput = { subject: string; body: string; evidence_ids: string[] };

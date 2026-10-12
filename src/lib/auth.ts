@@ -17,16 +17,15 @@ export function checkPasscode(input: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-/** Open access: with no ADMIN_PASSCODE configured, every action is available to every visitor. */
-export const isOpenAccess = () => !process.env.ADMIN_PASSCODE;
-
 /**
- * Everything is viewable without login. Actions require the admin cookie, unless the deployment is in
- * open-access mode (ADMIN_PASSCODE unset). Set ADMIN_PASSCODE to lock actions again.
+ * Locked by default. Every action (Server Actions and POST routes) checks the admin cookie on the server.
+ * Pages stay readable without login. Only an explicit OPEN_ACCESS=true opens the actions to everyone (demo mode).
  */
+export const isOpenAccess = () => process.env.OPEN_ACCESS === "true";
+
 export async function isAdmin(): Promise<boolean> {
   if (isOpenAccess()) return true;
-  const token = adminToken();
+  const token = adminToken(); // null when ADMIN_PASSCODE is not set: nobody can unlock, so actions stay disabled
   if (!token) return false;
   const jar = await cookies();
   return jar.get(ADMIN_COOKIE)?.value === token;
@@ -34,7 +33,7 @@ export async function isAdmin(): Promise<boolean> {
 
 export class NotAdminError extends Error {
   constructor() {
-    super("Admin mode required. Unlock with the passcode (lock icon, top right).");
+    super(process.env.ADMIN_PASSCODE ? "Locked. Enter the passcode (lock icon, top right) to use actions." : "Actions are disabled because ADMIN_PASSCODE is not set on the server.");
   }
 }
 

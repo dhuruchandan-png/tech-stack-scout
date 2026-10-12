@@ -1,6 +1,9 @@
 import { and, desc, eq, lt, ne } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import type { ActivityResult, SourceStatus } from "@/db/schema";
+import type { ActivityResult, InfraResult, MicroservicesResult, SourceStatus } from "@/db/schema";
+import { ensureSchema, getYoutubeChannelId, setYoutubeChannelId } from "@/db/raw";
+import { gateByConfidence, makeCheckContext } from "@/lib/ai/context";
+import { isDocsRepo } from "@/lib/compute/repos";
 import { GeminiUnavailable } from "@/lib/ai/gemini";
 import { generateBrief } from "@/lib/ai/generate";
 import type { CheckContext } from "@/lib/ai/check";
@@ -9,7 +12,7 @@ import { computeConfidence } from "@/lib/compute/confidence";
 import { diffSnapshots, type CurrentSnap, type Snap } from "@/lib/compute/diff";
 import { assignRefs, buildEvidence, selectForGemini, type Ref } from "@/lib/compute/evidence";
 import { factsToText } from "@/lib/compute/facts";
-import { detectInfra, microservicesSignal, type RepoTree } from "@/lib/compute/infra";
+import { addJobCloudSignals, detectInfra, microservicesSignal, type RepoTree } from "@/lib/compute/infra";
 import { computeLanguages, isActiveRepo } from "@/lib/compute/languages";
 import { syncCompanyFacts } from "@/lib/hubspot";
 import { discoverGithubOrg, fetchGithub, RateLimitError } from "@/lib/sources/github";
@@ -63,6 +66,7 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
   const rid = runId ?? (await queueRun(companyId, trigger));
   const t0 = Date.now();
   try {
+    await ensureSchema();
     const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
     if (!company || !company.active) {
       await db.update(runs).set({ status: "done", finishedAt: new Date(), error: "Company removed; skipped" }).where(eq(runs.id, rid));
@@ -113,15 +117,16 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
       return r;
     };
 
+    const ytChannel = await getYoutubeChannelId(companyId);
     const [ghRes, jobsRes, blogRes, ytRes, hnRes] = await Promise.all([
       org
-        ? timed<GithubData>("github", () => cached(companyId, `github:${org}`, force, async () => ({ ok: true, data: await fetchGithub(org!) } as SourceResult<GithubData>)),
+        ? timed<GithubData>("github", () => cached(companyId, `github:v3:${org}`, force, async () => ({ ok: true, data: await fetchGithub(org!) } as SourceResult<GithubData>)),
             (g) => `${g.repoTotal} repos · ${g.repos.filter((r) => isActiveRepo(r)).length} active · ${Object.keys(g.trees).length} trees scanned`)
         : Promise.resolve<SourceResult<GithubData>>({ ok: false, status: "not_found" }),
-      timed<JobsData>("jobs", () => cached(companyId, `jobs:${company.jobBoardProvider ?? ""}:${company.jobBoardSlug ?? ""}`, force, () => fetchJobs({ name: company.name, domain: company.domain, provider: company.jobBoardProvider, slug: company.jobBoardSlug })),
+      timed<JobsData>("jobs", () => cached(companyId, `jobs:v3:${company.jobBoardProvider ?? ""}:${company.jobBoardSlug ?? ""}`, force, () => fetchJobs({ name: company.name, domain: company.domain, provider: company.jobBoardProvider, slug: company.jobBoardSlug })),
         (j) => `${j.engineeringJobs.length} engineering roles (${j.provider})`),
       timed<BlogData>("blog", () => cached(companyId, `blog:${company.blogRssUrl ?? ""}`, force, () => fetchBlog(company.domain, company.blogRssUrl)), (b) => `${b.posts.length} posts · ${new URL(b.feedUrl).host}`),
-      timed<YoutubeData>("youtube", () => cached(companyId, `youtube:${company.youtubeQuery ?? ""}`, force, () => fetchYoutube(company.name, company.youtubeQuery)), (y) => `${y.talks.length} talks`),
+      timed<YoutubeData>("youtube", () => cached(companyId, `youtube:v3:${company.youtubeQuery ?? ""}:${ytChannel ?? ""}`, force, () => fetchYoutube(company.name, { query: company.youtubeQuery, channelId: ytChannel, onDetected: (id) => setYoutubeChannelId(companyId, id) })), (y) => `${y.talks.length} talks from own channel or tech-titled videos`),
       timed<HnData>("hn", () => cached(companyId, "hn", force, () => fetchHn(company.name, company.domain)), (h) => `${h.items.length} stories`),
     ]);
 
@@ -152,12 +157,12 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
       ? Object.entries(gh.trees).map(([repo, paths]) => ({ repo, owner: gh.org, branch: gh.repos.find((r) => r.name === repo)?.defaultBranch ?? "main", paths }))
       : [];
     let infra = gh ? detectInfra(trees, gh.files) : null;
-    let microservices = microservicesSignal(gh?.repos ?? [], infra);
+    let microservices: MicroservicesResult = { level: "unknown", reasons: [] };
     let commitSeries = gh?.commitSeries ?? new Array(13).fill(0);
-    if (failed("github") && prev) {
+    const githubStale = failed("github") && !!prev;
+    if (githubStale && prev) {
       languages = prev.snap.languages ?? [];
       infra = prev.snap.infra ?? null;
-      microservices = prev.snap.microservices ?? microservices;
       commitSeries = prev.snap.commitSeries ?? commitSeries;
     }
 
@@ -166,21 +171,27 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
       ? summarizeJobTech(jobs.engineeringJobs.map((j) => `${j.title} ${j.text}`))
       : failed("jobs") ? prev!.snap.infra?.jobMentions ?? [] : [];
     if (jobMentions.length) {
-      infra = infra ?? { items: [], clouds: [], categories: {}, reposScanned: 0 };
-      infra = { ...infra, jobMentions };
+      const base: InfraResult = infra ?? { items: [], clouds: [], categories: {}, reposScanned: 0 };
+      // a cloud named in 3+ open roles is a "runs on" signal from jobs; strengths are recomputed
+      infra = addJobCloudSignals({ ...base, jobMentions }, jobMentions);
     }
+    // microservices signal: deployable services in code, plus whether open roles name Kubernetes
+    microservices = githubStale && prev?.snap.microservices
+      ? prev.snap.microservices
+      : microservicesSignal(gh?.repos ?? [], infra, jobMentions.find((m) => m.name === "Kubernetes")?.count ?? 0);
 
     const now = Date.now();
     const blogPosts90 = blog ? blog.posts.filter((p) => p.publishedAt && now - new Date(p.publishedAt).getTime() <= 90 * DAY).length : failed("blog") ? prev!.snap.activity?.blogPosts90 ?? 0 : 0;
     const talks12mo = yt ? yt.talks.filter((t) => now - new Date(t.publishedAt).getTime() <= 365 * DAY).length : failed("youtube") ? prev!.snap.activity?.talks12mo ?? 0 : 0;
     const openRoles = jobs ? jobs.engineeringJobs.length : failed("jobs") ? prev!.snap.activity?.openRoles ?? 0 : 0;
 
+    const totalRoles = jobs ? jobs.totalJobs : failed("jobs") ? prev!.snap.activity?.totalRoles : undefined;
     let activity: ActivityResult = computeActivity({
-      repos: gh?.repos ?? [], openRoles, blogPosts90, talks12mo, previousCommits30: prev?.snap.activity?.commits30, repoTotal: gh?.repoTotal,
+      repos: gh?.repos ?? [], openRoles, totalRoles, blogPosts90, talks12mo, botShare: gh?.botShare, repoTotal: gh?.repoTotal,
     });
     if (failed("github") && prev?.snap.activity) {
       const p = prev.snap.activity;
-      activity = { ...activity, commits30: p.commits30, commits90: p.commits90, reposPushed30: p.reposPushed30, releases90: p.releases90, activeRepos: p.activeRepos, repoTotal: p.repoTotal, wowChangePct: null };
+      activity = { ...activity, commits30: p.commits30, commits90: p.commits90, commitsPrev30: p.commitsPrev30, commitsKnown: p.commitsKnown, botShare: p.botShare, docsRepos: p.docsRepos, sdkHeavy: p.sdkHeavy, reposPushed30: p.reposPushed30, releases90: p.releases90, activeRepos: p.activeRepos, repoTotal: p.repoTotal, wowChangePct: null };
       activity.level = activityLevel(activity);
     }
 
@@ -194,7 +205,7 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
     await logStep(rid, "compute", "ok", `Q1–Q3 · diff vs last week · confidence ${conf.level}`, s8);
 
     /* ---- step 7: evidence pack ---- */
-    let drafts: EvidenceDraft[] = buildEvidence({ github: gh, languages, infra, jobs, blog, youtube: yt, hn });
+    let drafts: EvidenceDraft[] = buildEvidence({ github: gh, languages, infra, jobs, blog, youtube: yt, hn, activity, microservices, docsExcluded: activity.docsRepos });
     // carry last week's evidence for failed sources, flagged as stale
     if (prev) {
       for (const src of ["github", "jobs", "blog", "youtube", "hn"] as const) {
@@ -216,9 +227,14 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
       newJobs: prevJobs.size ? refs.filter((e) => e.source === "jobs" && !prevJobs.has(e.url) && !e.meta?.stale).map((e) => ({ title: e.title, techs: (e.meta?.techs as string[]) ?? [], ref: e.ref })) : [],
       newBlogs: prevBlog.size ? refs.filter((e) => e.source === "blog" && !prevBlog.has(e.url) && !e.meta?.stale).slice(0, 2).map((e) => ({ title: e.title, ref: e.ref })) : [],
       newTalks: prevTalks.size ? refs.filter((e) => e.source === "youtube" && !prevTalks.has(e.url) && !e.meta?.stale).slice(0, 2).map((e) => ({ title: e.title, ref: e.ref })) : [],
+      // "New repo" means created in the last 7 days. A repo that merely started getting commits is "Newly active".
       newRepos: prev && gh
-        ? gh.repos.filter((r) => !r.isFork && !r.isArchived && r.commits90 >= 10 && r.commits30 === r.commits90 && !prevRepoNames.has(r.name) && prevRepoNames.size > 0).slice(0, 2)
-            .map((r) => ({ name: r.name, commits30: r.commits30, language: r.primaryLanguage, ref: refs.find((e) => e.kind === "repo" && e.meta?.repo === r.name)?.ref }))
+        ? gh.repos
+            .filter((r) => !r.isFork && !r.isArchived && !isDocsRepo(r.name) && prevRepoNames.size > 0 && !prevRepoNames.has(r.name))
+            .map((r) => ({ r, created: !!r.createdAt && now - new Date(r.createdAt).getTime() <= 7 * DAY }))
+            .filter(({ r, created }) => created || (r.commits90 >= 20 && r.commits30 === r.commits90))
+            .slice(0, 2)
+            .map(({ r, created }) => ({ name: r.name, created, commits30: r.commits30, language: r.primaryLanguage, ref: refs.find((e) => e.kind === "repo" && e.meta?.repo === r.name)?.ref }))
         : [],
     };
     const changes = diffSnapshots(prev ? prev.snap : null, cur);
@@ -227,12 +243,7 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
     const serviceRepoCount = (gh?.repos ?? []).filter((r) => !r.isFork && !r.isArchived && /(-service|-svc|-api|-worker|-gateway)/i.test(r.name)).length;
     const sourceNotes = Object.entries(sourceStatus).filter(([, s]) => s.state !== "ok").map(([k, s]) => `${k}: ${s.state === "failed" ? `failed (showing data since ${s.staleSince ?? "earlier"})` : "none found"}`);
     const factsText = factsToText({ company: company.name, languages, infra, microservices, activity, confidence: conf.level, confidenceReason: conf.reason, changes, activeRepoCount: activeRepos, serviceRepoCount, sourceNotes });
-    const ctx: CheckContext = {
-      company: company.name,
-      validRefs: new Set(refs.map((r) => r.ref)),
-      evidenceText: Object.fromEntries(refs.map((r) => [r.ref, `${r.title} ${r.snippet} ${r.url} ${JSON.stringify(r.meta ?? {})}`])),
-      factsText,
-    };
+    const ctx: CheckContext = makeCheckContext(company.name, refs, factsText);
     const [settingsRow] = await db.select().from(schema.settings).limit(1);
 
     let briefRow: typeof briefs.$inferInsert | null = null;
@@ -252,16 +263,20 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
           ctx,
         );
         geminiCost = r.usage.costUsd; geminiTokens = r.usage.inputTokens + r.usage.outputTokens;
+        const gated = gateByConfidence(r.checkStatus, r.checkReasons, conf.level);
+        const unknowns = [...r.brief.unknowns];
+        if (activity.sdkHeavy) unknowns.push("Mostly public SDKs: their internal stack may differ from what the public code suggests.");
+        if (activity.commitsKnown === false) unknowns.push("Commit counts were unavailable for this very large org, so activity is estimated from repo pushes only.");
         await logStep(rid, "gemini", "ok", `summary + opener · ${(geminiTokens / 1000).toFixed(1)}k tok${r.regenerated ? " · regenerated once" : ""}`, s9);
         briefRow = {
           snapshotId: 0, summaryP1: r.brief.summary_p1, summaryP2: r.brief.summary_p2, openerText: r.brief.opener.text,
           openerEvidenceIds: r.brief.opener.evidence_ids, hookType: r.brief.opener.hook_type, talkingPoints: r.brief.talking_points,
-          unknowns: r.brief.unknowns, checkStatus: r.checkStatus, checkReasons: r.checkReasons, model: r.usage.model,
+          unknowns, checkStatus: gated.status, checkReasons: gated.reasons, model: r.usage.model,
           inputTokens: r.usage.inputTokens, outputTokens: r.usage.outputTokens, costUsd: r.usage.costUsd,
         };
         const evs = r.brief.opener.evidence_ids.join(", ");
-        await logStep(rid, "check", r.checkStatus === "verified" ? "ok" : "warn",
-          r.checkStatus === "verified" ? `opener verified [${evs}]` : `Needs review: ${r.checkReasons[0] ?? "see reasons"}`);
+        await logStep(rid, "check", gated.status === "verified" ? "ok" : "warn",
+          gated.status === "verified" ? `opener verified [${evs}]` : `Needs review: ${gated.reasons[0] ?? "see reasons"}`);
       } catch (e) {
         geminiDown = true;
         const msg = e instanceof GeminiUnavailable ? e.message : (e as Error).message;

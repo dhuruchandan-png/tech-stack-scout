@@ -1,5 +1,5 @@
 import { domainRoot, slugify } from "@/lib/domain";
-import { ENGINEERING_DEPT, ENGINEERING_TITLE } from "@/lib/compute/techdict";
+import { isEngineeringRole } from "@/lib/compute/techdict";
 import { fetchRetry } from "@/lib/http";
 import type { JobPost, JobsData, SourceResult } from "@/lib/types";
 import { stripHtml } from "@/lib/util";
@@ -16,7 +16,7 @@ async function json<T>(url: string): Promise<T | null> {
   }
 }
 
-const isEng = (title: string, dept: string | null) => ENGINEERING_TITLE.test(title) || (!!dept && ENGINEERING_DEPT.test(dept));
+const isEng = (title: string, _dept: string | null) => isEngineeringRole(title);
 
 async function greenhouse(slug: string): Promise<JobsData | null> {
   type GH = { jobs: { id: number; title: string; absolute_url: string; updated_at?: string; location?: { name?: string }; departments?: { name: string }[]; content?: string }[] };

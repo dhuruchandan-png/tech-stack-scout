@@ -60,5 +60,18 @@ export function snippetAround(text: string, terms: string[], words = 25): string
   return `${start > 0 ? "…" : ""}${slice}${start + words < toks.length ? "…" : ""}`;
 }
 
-export const ENGINEERING_TITLE = /\b(engineer|developer|sre|devops|platform|infrastructure|architect|backend|frontend|full[- ]?stack|data scientist|machine learning|ml|security engineer|qa|test|software|technical lead|tech lead|engineering manager)\b/i;
-export const ENGINEERING_DEPT = /\b(engineering|technology|product development|r&d|platform|infrastructure|developer|devops|sre|data|security)\b/i;
+/**
+ * Engineering roles, by TITLE only. Developer-relations, success, sales, support and similar "developer" titles
+ * are not engineers, so they are rejected before the positive match.
+ */
+const NOT_ENGINEERING = /\b(success|advocate|advocacy|evangelist|relations|sales|solutions?|sales engineer|support|customer|recruit(er|ing)?|talent|account|marketing|community|content|writer|designer|partner(ship)?s?|operations manager|program manager|product manager|people|hr|finance|legal|counsel|executive assistant)\b/i;
+const ENGINEERING_TITLE_RE = /\b(engineer|engineering|developer|sre|site reliability|devops|platform|infrastructure|architect|data scientist|machine learning|ml |security engineer|application security|appsec|firmware|programmer)\b/i;
+
+export function isEngineeringRole(title: string): boolean {
+  if (NOT_ENGINEERING.test(title)) return false;
+  return ENGINEERING_TITLE_RE.test(title);
+}
+
+// kept for callers that import the old names
+export const ENGINEERING_TITLE = ENGINEERING_TITLE_RE;
+export const ENGINEERING_DEPT = /\b(engineering|technology|platform|infrastructure|devops|sre)\b/i;

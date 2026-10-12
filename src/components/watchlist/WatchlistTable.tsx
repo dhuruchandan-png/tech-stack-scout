@@ -22,7 +22,7 @@ export type Row = {
   microservices: string; activity: string; series: number[];
   confidence: string | null; confidenceReason: string | null;
   snapshotAt: string | null; staleSource: { source: string; since: string } | null;
-  opener: string | null; hubspot: string; hubspotError: string | null; changed: boolean;
+  opener: string | null; hubspot: string; hubspotError: string | null; changed: boolean; isNew: boolean;
 };
 
 type Filters = { q: string; cloud: string; lang: string; tool: string; ms: string; activity: string; confidence: string; changed: boolean };
@@ -242,7 +242,7 @@ export function WatchlistTable({ rows, removed, openAdd, initial }: { rows: Row[
                           <Link href={`/accounts/${r.domain}`} className="block max-w-[190px] truncate font-semibold hover:text-signal" title={r.name} onClick={(e) => e.stopPropagation()}>{r.name}</Link>
                           <div className="mono max-w-[190px] truncate text-[11px] text-faint">{r.domain}</div>
                         </div>
-                        {r.changed && <span className="chip border-change/40 bg-change/10 !px-1.5 text-[10px] text-change" title="Changed this week">new</span>}
+                        {r.isNew && <span className="chip border-change/40 bg-change/10 !px-1.5 text-[10px] text-change" title="Added to the watchlist in the last 7 days">new</span>}
                       </div>
                     </td>
                     {show("q1") && <td className={cn("px-3", pad)}>{r.languages.length ? <LanguageBar languages={r.languages} compact max={3} /> : <span className="text-faint">No public code</span>}

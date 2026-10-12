@@ -59,7 +59,7 @@ export default async function OnePager({ params }: { params: Promise<{ slug: str
           <div className="rounded-input border border-line p-3">
             <div className="label">Q3 · Activity · <span className="capitalize">{a?.level}</span></div>
             <div className="mt-2"><HeatStrip series={s.commitSeries ?? []} size={9} /></div>
-            <div className="mono mt-2 text-[10.5px] text-muted">{a?.commits30} commits 30d · {a?.reposPushed30} repos pushed · {a?.openRoles} open roles · {a?.blogPosts90} posts · {a?.talks12mo} talks</div>
+            <div className="mono mt-2 text-[10.5px] text-muted">{a?.commits30} commits 30d · {a?.reposPushed30} repos pushed · {a?.jobsFound === false ? "jobs: board not found" : `${a?.openRoles} open roles`} · {a?.blogPosts90} posts · {a?.talks12mo} talks</div>
           </div>
         </section>
 

@@ -36,7 +36,7 @@ export default async function HowItWorks() {
   const bySource = (s: string) => ev.filter((e) => e.source === s).length;
   const sum = (f: (a: (typeof accts)[number]) => number) => accts.reduce((t, a) => t + f(a), 0);
   const activeRepos = sum((a) => a.snapshot?.activity?.activeRepos ?? 0);
-  const roles = sum((a) => a.snapshot?.activity?.openRoles ?? 0);
+  const roles = sum((a) => (a.snapshot?.activity?.jobsFound === false ? 0 : a.snapshot?.activity?.openRoles ?? 0));
   const langs = new Set(withSnap.flatMap((a) => (a.snapshot?.languages ?? []).slice(0, 1).map((l) => l.name)));
   const withCloud = accts.filter((a) => (a.snapshot?.infra?.clouds.length ?? 0) > 0).length;
   const strongMs = accts.filter((a) => a.snapshot?.microservices?.level === "strong").length;
@@ -45,7 +45,7 @@ export default async function HowItWorks() {
   const needsReview = accts.filter((a) => a.brief?.checkStatus === "needs_review").length;
   const lowConf = accts.filter((a) => a.snapshot?.confidence === "low");
   const notFound = accts.flatMap((a) => Object.entries(a.snapshot?.sourceStatus ?? {}).filter(([, s]) => s.state === "not_found").map(([src]) => ({ a, src })));
-  const changed = accts.filter((a) => (a.snapshot?.changes ?? []).some((c) => !/first snapshot|no material/i.test(c.text))).length;
+  const changed = accts.filter((a) => (a.snapshot?.changes ?? []).some((c) => !/first (snapshot|week)|no material/i.test(c.text))).length;
   const sentDrafts = drafts.filter((d) => d.status === "sent").length;
   const sample = withSnap[0];
 
@@ -55,9 +55,9 @@ export default async function HowItWorks() {
     { n: 3, title: "Refresh is triggered", what: "Every Monday 6:00 IST a Vercel cron queues every active company (3a). Nikhil can also click Refresh now before any call (3b). One company is processed per request, so nothing times out.", who: "code", href: "/runs", live: `Last weekly run: ${health.lastWeeklyRun ? new Date(health.lastWeeklyRun).toLocaleDateString("en-GB") : "not yet"}` },
     { n: 4, title: "Match the sources", what: "Uses the overrides, otherwise finds the company's GitHub org, job board and blog feed from its domain. Each match gets a confidence level, and Nikhil can correct it.", who: "code", href: sample ? `/accounts/${sample.company.domain}?tab=sources` : undefined },
     { n: 5, title: "Fetch live public data", what: "GitHub (repos, languages, commits, infra files), job boards (Greenhouse / Lever / Ashby), engineering blog RSS, YouTube talks (own channel or tech-titled videos only; earnings, memes and gaming are rejected), Hacker News.", who: "code", live: `${fmtInt(activeRepos)} active repos · ${fmtInt(roles)} open eng roles · ${bySource("blog")} posts · ${bySource("youtube")} talks · ${bySource("hn")} HN stories` },
-    { n: 6, title: "Load last week's snapshot", what: "So the system can say what changed since last week.", who: "code" },
+    { n: 6, title: "Load last week's snapshot", what: "So the system can say what changed since last week: it compares with the most recent snapshot that is at least 6 days old. In the first week there is nothing to compare, and the page says \"First week tracked\".", who: "code" },
     { n: 7, title: "Build the evidence pack", what: "Every signal becomes an evidence item with an id (E1, E2…), source, link, title, snippet and date. This is what makes every claim checkable.", who: "code", live: `${fmtInt(ev.length)} evidence items` },
-    { n: 8, title: "Code answers Q1, Q2, Q3", what: "Languages by code size (markup and docs repos excluded), cloud and infra split into \"runs on\" and \"integrates with\" with a strength, microservices from deployable services, commits for two 30-day windows with bots removed, engineering roles by title, confidence, and what changed. Plain code, not AI, so the numbers are exact.", who: "code", live: `${withCloud} accounts with a visible cloud · ${strongMs} with a strong microservices signal · ${changed} changed vs last week` },
+    { n: 8, title: "Code answers Q1, Q2, Q3", what: "Languages by code size (markup and docs repos excluded), cloud and infra split into \"runs on\" and \"integrates with\" with a strength, microservices from deployable services, commits for two 30-day windows with bots removed, engineering roles by title (sales, solutions and professional-services roles are left out), confidence (lowered when a source is missing), and what changed. If no job board is found it says \"board not found\", never \"0 roles\". Plain code, not AI, so the numbers are exact.", who: "code", live: `${withCloud} accounts with a visible cloud · ${strongMs} with a strong microservices signal · ${changed} changed vs last week` },
     { n: 9, title: "Gemini writes the summary and first line", what: "Gemini Flash reads only the evidence pack and the computed facts, and writes two paragraphs plus one suggested opening line, citing evidence ids like [E12].", who: "ai", live: `${openers} first lines written · model ${MODEL()} · $${health.costWeek.toFixed(2)} this week` },
     { n: 10, title: "Code checks the AI", what: "Every sentence must cite the right kind of evidence (a commits claim cites an activity item, a cloud claim an infra or jobs item), every number must appear in the cited item, and the opener must name a real repo, tool or role from a cited title and tie it to a specific pain, with no flattery. One automatic retry, then \"Needs review\". Needs-review text cannot be approved, and a Low-confidence account can never be Verified.", who: "code", live: `${verified} verified · ${needsReview} needs review` },
     { n: 11, title: "Save the new snapshot", what: "Signals, sources, summary, first line, confidence and run log are stored. If a source failed, last week's data is kept and marked \"Stale since…\".", who: "code" },

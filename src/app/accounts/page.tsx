@@ -18,6 +18,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   if (!res.ok) return <SetupNotice error={res.error} />;
   const { all, active, health } = res.data;
   const weekAgo = Date.now() - 7 * DAY;
+  // "new" = added to the watchlist in the last 7 days, after the starting list was loaded
+  const firstAdded = Math.min(...all.map((a) => a.company.addedAt.getTime()));
 
   const rows: Row[] = active.map((a) => {
     const s = a.snapshot;
@@ -40,7 +42,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
       opener: a.brief?.checkStatus ?? (s ? "pending" : null),
       hubspot: a.hubspot,
       hubspotError: a.hubspotError,
-      changed: !!s && s.createdAt.getTime() > weekAgo && (s.changes ?? []).some((c) => c.sign !== "~" || !/first snapshot|no material/i.test(c.text)),
+      isNew: a.company.addedAt.getTime() > weekAgo && a.company.addedAt.getTime() - firstAdded > 3_600_000,
+      changed: !!s && s.createdAt.getTime() > weekAgo && (s.changes ?? []).some((c) => c.sign !== "~" || !/first (snapshot|week)|no material/i.test(c.text)),
     };
   });
   const removed = all

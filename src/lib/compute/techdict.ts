@@ -64,7 +64,7 @@ export function snippetAround(text: string, terms: string[], words = 25): string
  * Engineering roles, by TITLE only. Developer-relations, success, sales, support and similar "developer" titles
  * are not engineers, so they are rejected before the positive match.
  */
-const NOT_ENGINEERING = /\b(success|advocate|advocacy|evangelist|relations|sales|solutions?|sales engineer|support|customer|recruit(er|ing)?|talent|account|marketing|community|content|writer|designer|partner(ship)?s?|operations manager|program manager|product manager|people|hr|finance|legal|counsel|executive assistant)\b/i;
+const NOT_ENGINEERING = /\b(success|advocate|advocacy|evangelist|relations|sales|solutions?|sales engineer|support|customer|recruit(er|ing)?|talent|account|marketing|community|content|writer|designer|partner(ship)?s?|operations manager|program manager|product manager|people|hr|finance|legal|counsel|executive assistant|professional services|solutions? architect|solutions? engineer(ing)?)\b/i;
 const ENGINEERING_TITLE_RE = /\b(engineer|engineering|developer|sre|site reliability|devops|platform|infrastructure|architect|data scientist|machine learning|ml |security engineer|application security|appsec|firmware|programmer)\b/i;
 
 export function isEngineeringRole(title: string): boolean {

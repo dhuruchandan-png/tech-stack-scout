@@ -8,8 +8,12 @@ type Files = Record<string, string>; // "repo:path" -> content
 const base = (p: string) => p.split("/").pop() ?? p;
 const permalink = (t: RepoTree, path: string) => `https://github.com/${t.owner}/${t.repo}/blob/${t.branch}/${path}`;
 
+/** Test fixtures and example folders say nothing about how the company deploys, so their files are ignored. */
+export const isTestPath = (p: string) => /(^|\/)(tests?|__tests__|test-fixtures?|testdata|fixtures?|examples?)\//i.test(p);
+
 /** Which files are worth downloading to confirm a detection (capped, so we never scan whole repos). */
-export function selectFilesToFetch(paths: string[]): string[] {
+export function selectFilesToFetch(allPaths: string[]): string[] {
+  const paths = allPaths.filter((p) => !isTestPath(p));
   const out: string[] = [];
   const tf = paths.filter((p) => p.endsWith(".tf")).slice(0, 3);
   const wf = paths.filter((p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p)).slice(0, 4);
@@ -79,7 +83,8 @@ export function detectInfra(trees: RepoTree[], files: Files): InfraResult {
   const items: InfraItem[] = [];
   const signals: CloudSignal[] = [];
 
-  for (const t of trees) {
+  for (const tree of trees) {
+    const t: RepoTree = { ...tree, paths: tree.paths.filter((p) => !isTestPath(p)) };
     const has = (re: RegExp) => t.paths.find((p) => re.test(p));
     const link = (path: string, tool: string, category: InfraItem["category"]) =>
       add(items, { category, tool, repo: t.repo, path, url: permalink(t, path) });

@@ -24,7 +24,7 @@ export function diffSnapshots(prev: Snap | null, cur: CurrentSnap): ChangeItem[]
   const refs = (r?: string) => (r ? [r] : undefined);
 
   if (!prev) {
-    out.push({ sign: "~", text: "First snapshot for this account. Changes will appear after next week's refresh." });
+    out.push({ sign: "~", text: "First week tracked, no comparison yet." });
     return out;
   }
 

@@ -116,7 +116,7 @@ export const drafts = pgTable("drafts", {
   subject: text("subject").notNull().default(""),
   body: text("body").notNull().default(""),
   evidenceIds: jsonb("evidence_ids").$type<string[]>(),
-  // draft | internal_review | approved | opened | sent
+  // draft | internal_review | approved | opened | sent | replaced (superseded by a newer draft for the same account)
   status: text("status").notNull().default("draft"),
   checkStatus: text("check_status"),
   checkReasons: jsonb("check_reasons").$type<string[]>(),
@@ -224,6 +224,8 @@ export type MicroservicesResult = {
 export type ActivityResult = {
   commits30: number; commits90: number; reposPushed30: number; releases90: number;
   openRoles: number; blogPosts90: number; talks12mo: number;
+  /** false when no Greenhouse / Lever / Ashby board was found, so "0 roles" would be wrong: the data is unavailable */
+  jobsFound?: boolean;
   activeRepos?: number; repoTotal?: number; serviceRepos?: number;
   /** open roles that count as engineering, out of all open roles */
   totalRoles?: number;

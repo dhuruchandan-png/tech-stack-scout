@@ -22,6 +22,7 @@ export function computeActivity(args: {
   repos: RepoInfo[];
   openRoles: number;
   totalRoles?: number;
+  jobsFound?: boolean;
   blogPosts90: number;
   talks12mo: number;
   /** estimated share (0-1) of commits made by bots; removed from every commit count */
@@ -49,7 +50,7 @@ export function computeActivity(args: {
   const base = { commits30, commits90, reposPushed30, releases90, openRoles: args.openRoles, blogPosts90: args.blogPosts90, talks12mo: args.talks12mo };
   const wowChangePct = commitsPrev30 > 0 ? Math.round(((commits30 - commitsPrev30) / commitsPrev30) * 100) : null;
   return {
-    ...base, activeRepos, repoTotal: args.repoTotal, totalRoles: args.totalRoles, commitsPrev30, commitsKnown,
+    ...base, jobsFound: args.jobsFound, activeRepos, repoTotal: args.repoTotal, totalRoles: args.totalRoles, commitsPrev30, commitsKnown,
     botShare: args.botShare ? Math.round(args.botShare * 100) / 100 : 0, docsRepos: args.repos.filter((r) => isActiveRepo(r, now) && isDocsRepo(r.name)).length,
     sdkHeavy, level: activityLevel(base), wowChangePct,
   };

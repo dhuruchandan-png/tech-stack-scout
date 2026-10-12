@@ -120,13 +120,13 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
     const ytChannel = await getYoutubeChannelId(companyId);
     const [ghRes, jobsRes, blogRes, ytRes, hnRes] = await Promise.all([
       org
-        ? timed<GithubData>("github", () => cached(companyId, `github:v3:${org}`, force, async () => ({ ok: true, data: await fetchGithub(org!) } as SourceResult<GithubData>)),
+        ? timed<GithubData>("github", () => cached(companyId, `github:v4:${org}`, force, async () => ({ ok: true, data: await fetchGithub(org!) } as SourceResult<GithubData>)),
             (g) => `${g.repoTotal} repos · ${g.repos.filter((r) => isActiveRepo(r)).length} active · ${Object.keys(g.trees).length} trees scanned`)
         : Promise.resolve<SourceResult<GithubData>>({ ok: false, status: "not_found" }),
-      timed<JobsData>("jobs", () => cached(companyId, `jobs:v3:${company.jobBoardProvider ?? ""}:${company.jobBoardSlug ?? ""}`, force, () => fetchJobs({ name: company.name, domain: company.domain, provider: company.jobBoardProvider, slug: company.jobBoardSlug })),
+      timed<JobsData>("jobs", () => cached(companyId, `jobs:v4:${company.jobBoardProvider ?? ""}:${company.jobBoardSlug ?? ""}`, force, () => fetchJobs({ name: company.name, domain: company.domain, provider: company.jobBoardProvider, slug: company.jobBoardSlug })),
         (j) => `${j.engineeringJobs.length} engineering roles (${j.provider})`),
       timed<BlogData>("blog", () => cached(companyId, `blog:${company.blogRssUrl ?? ""}`, force, () => fetchBlog(company.domain, company.blogRssUrl)), (b) => `${b.posts.length} posts · ${new URL(b.feedUrl).host}`),
-      timed<YoutubeData>("youtube", () => cached(companyId, `youtube:v3:${company.youtubeQuery ?? ""}:${ytChannel ?? ""}`, force, () => fetchYoutube(company.name, { query: company.youtubeQuery, channelId: ytChannel, onDetected: (id) => setYoutubeChannelId(companyId, id) })), (y) => `${y.talks.length} talks from own channel or tech-titled videos`),
+      timed<YoutubeData>("youtube", () => cached(companyId, `youtube:v4:${company.youtubeQuery ?? ""}:${ytChannel ?? ""}`, force, () => fetchYoutube(company.name, { query: company.youtubeQuery, channelId: ytChannel, onDetected: (id) => setYoutubeChannelId(companyId, id) })), (y) => `${y.talks.length} talks from own channel or tech-titled videos`),
       timed<HnData>("hn", () => cached(companyId, "hn", force, () => fetchHn(company.name, company.domain)), (h) => `${h.items.length} stories`),
     ]);
 
@@ -186,8 +186,9 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
     const openRoles = jobs ? jobs.engineeringJobs.length : failed("jobs") ? prev!.snap.activity?.openRoles ?? 0 : 0;
 
     const totalRoles = jobs ? jobs.totalJobs : failed("jobs") ? prev!.snap.activity?.totalRoles : undefined;
+    const jobsFound = jobs ? true : failed("jobs") ? prev?.snap.activity?.jobsFound ?? (prev?.snap.activity?.openRoles ?? 0) > 0 : false;
     let activity: ActivityResult = computeActivity({
-      repos: gh?.repos ?? [], openRoles, totalRoles, blogPosts90, talks12mo, botShare: gh?.botShare, repoTotal: gh?.repoTotal,
+      repos: gh?.repos ?? [], openRoles, totalRoles, jobsFound, blogPosts90, talks12mo, botShare: gh?.botShare, repoTotal: gh?.repoTotal,
     });
     if (failed("github") && prev?.snap.activity) {
       const p = prev.snap.activity;
@@ -200,7 +201,7 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
     const conf = computeConfidence({
       githubMatch: org ? orgConfidence ?? "high" : null, // an explicit override counts as high
       activeRepos, reposScanned: infra?.reposScanned ?? 0,
-      jobPosts: openRoles, blogPosts: blog?.posts.length ?? 0, talks: yt?.talks.length ?? 0, hnItems: hn?.items.length ?? 0, sourceStatus,
+      jobsFound, commits30: activity.commits30, jobPosts: openRoles, blogPosts: blog?.posts.length ?? 0, talks: yt?.talks.length ?? 0, hnItems: hn?.items.length ?? 0, sourceStatus,
     });
     await logStep(rid, "compute", "ok", `Q1–Q3 · diff vs last week · confidence ${conf.level}`, s8);
 
@@ -219,16 +220,17 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
     const refs: Ref[] = assignRefs(drafts);
 
     /* ---- diff (step 8: what changed) ---- */
-    const prevUrls = (src: string) => new Set((prev?.evidence ?? []).filter((e) => e.source === src).map((e) => e.url));
+    const base = prev?.baseline ?? null; // "last week": the most recent snapshot at least 6 days old
+    const prevUrls = (src: string) => new Set((base?.evidence ?? []).filter((e) => e.source === src).map((e) => e.url));
     const prevJobs = prevUrls("jobs"), prevBlog = prevUrls("blog"), prevTalks = prevUrls("youtube");
-    const prevRepoNames = new Set((prev?.evidence ?? []).filter((e) => e.kind === "repo").map((e) => String((e.meta as { repo?: string } | null)?.repo ?? "")));
+    const prevRepoNames = new Set((base?.evidence ?? []).filter((e) => e.kind === "repo").map((e) => String((e.meta as { repo?: string } | null)?.repo ?? "")));
     const cur: CurrentSnap = {
       languages, infra, microservices, activity,
       newJobs: prevJobs.size ? refs.filter((e) => e.source === "jobs" && !prevJobs.has(e.url) && !e.meta?.stale).map((e) => ({ title: e.title, techs: (e.meta?.techs as string[]) ?? [], ref: e.ref })) : [],
       newBlogs: prevBlog.size ? refs.filter((e) => e.source === "blog" && !prevBlog.has(e.url) && !e.meta?.stale).slice(0, 2).map((e) => ({ title: e.title, ref: e.ref })) : [],
       newTalks: prevTalks.size ? refs.filter((e) => e.source === "youtube" && !prevTalks.has(e.url) && !e.meta?.stale).slice(0, 2).map((e) => ({ title: e.title, ref: e.ref })) : [],
       // "New repo" means created in the last 7 days. A repo that merely started getting commits is "Newly active".
-      newRepos: prev && gh
+      newRepos: base && gh
         ? gh.repos
             .filter((r) => !r.isFork && !r.isArchived && !isDocsRepo(r.name) && prevRepoNames.size > 0 && !prevRepoNames.has(r.name))
             .map((r) => ({ r, created: !!r.createdAt && now - new Date(r.createdAt).getTime() <= 7 * DAY }))
@@ -237,7 +239,7 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
             .map(({ r, created }) => ({ name: r.name, created, commits30: r.commits30, language: r.primaryLanguage, ref: refs.find((e) => e.kind === "repo" && e.meta?.repo === r.name)?.ref }))
         : [],
     };
-    const changes = diffSnapshots(prev ? prev.snap : null, cur);
+    const changes = diffSnapshots(base ? base.snap : null, cur);
 
     /* ---- steps 9 + 10: Gemini + code check ---- */
     const serviceRepoCount = (gh?.repos ?? []).filter((r) => !r.isFork && !r.isArchived && /(-service|-svc|-api|-worker|-gateway)/i.test(r.name)).length;
@@ -321,22 +323,25 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
 
 /* ---------------- previous snapshot ---------------- */
 
+/** Smallest age (in days) a snapshot must have to count as "last week" in What changed. */
+export const BASELINE_DAYS = 6;
+
 async function loadPrevious(companyId: number) {
   const db = getDb();
-  const thisWeek = weekOf();
-  let [row] = await db.select().from(snapshots).where(and(eq(snapshots.companyId, companyId), lt(snapshots.weekOf, thisWeek))).orderBy(desc(snapshots.createdAt)).limit(1);
-  if (!row) {
-    [row] = await db.select().from(snapshots).where(and(eq(snapshots.companyId, companyId), ne(snapshots.weekOf, ""))).orderBy(desc(snapshots.createdAt)).limit(1);
-    // same-week repeat refresh: only diff against it if it is more than a day old
-    if (row && Date.now() - row.createdAt.getTime() < DAY) {
-      // still use it for stale carry-forward, but it is a poor "last week" baseline
-    }
-  }
+  const rows = await db.select().from(snapshots).where(eq(snapshots.companyId, companyId)).orderBy(desc(snapshots.createdAt)).limit(40);
+  const row = rows[0];
   if (!row) return null;
+  const toSnap = (r: typeof row): Snap & { commitSeries: number[] | null; sourceStatus: Record<string, SourceStatus> | null } => ({
+    languages: r.languages, infra: r.infra, microservices: r.microservices, activity: r.activity,
+    commitSeries: r.commitSeries, sourceStatus: r.sourceStatus ?? {},
+  });
   const ev = await db.select().from(evidence).where(eq(evidence.snapshotId, row.id));
-  const snap: Snap & { commitSeries: number[] | null; sourceStatus: Record<string, SourceStatus> | null } = {
-    languages: row.languages, infra: row.infra, microservices: row.microservices, activity: row.activity,
-    commitSeries: row.commitSeries, sourceStatus: row.sourceStatus ?? {},
+  // The newest snapshot is used to carry failed sources forward; What changed compares against the most recent one that is at least 6 days old.
+  const baseRow = rows.find((r) => Date.now() - r.createdAt.getTime() >= BASELINE_DAYS * DAY - 3_600_000);
+  const baseEv = baseRow ? (baseRow.id === row.id ? ev : await db.select().from(evidence).where(eq(evidence.snapshotId, baseRow.id))) : [];
+  return {
+    snap: toSnap(row), evidence: ev, createdAt: row.createdAt,
+    activeRepos: (row.languages ?? []).length ? ev.filter((e) => e.kind === "repo").length : 0,
+    baseline: baseRow ? { snap: toSnap(baseRow), evidence: baseEv, createdAt: baseRow.createdAt } : null,
   };
-  return { snap, evidence: ev, createdAt: row.createdAt, activeRepos: (row.languages ?? []).length ? ev.filter((e) => e.kind === "repo").length : 0 };
 }

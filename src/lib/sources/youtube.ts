@@ -24,9 +24,12 @@ export function judgeVideo(v: VideoLike, company: string, ownChannelId?: string 
   if (REJECT.test(title)) return { accept: false, own: false, reason: "rejected: finance, entertainment or low-signal upload" };
   const own = !!ownChannelId && ownChannelId !== "none" && v.channelId === ownChannelId;
   if (own) return { accept: true, own: true, reason: "company's own channel" };
-  const names = new RegExp(`\\b${esc(company)}\\b`, "i").test(title);
-  if (names && TECH.test(title)) return { accept: true, own: false, reason: "names the company and a tech topic" };
-  return { accept: false, own: false, reason: names ? "no tech keyword in the title" : "does not name the company" };
+  const hit = new RegExp(`(?<![\\w-])${esc(company)}(?![\\w-])`, "i").exec(title);
+  const names = !!hit;
+  // a third-party video must name the company early (first half of the title): "Jerry: Workflow Builder | Built with Next.js, Hasura" is a user project
+  const early = !!hit && hit.index <= title.length / 2;
+  if (names && early && TECH.test(title)) return { accept: true, own: false, reason: "names the company and a tech topic" };
+  return { accept: false, own: false, reason: !names ? "does not name the company" : !early ? "names the company only late in the title (likely a third-party project)" : "no tech keyword in the title" };
 }
 
 const API = "https://www.googleapis.com/youtube/v3";

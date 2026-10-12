@@ -49,8 +49,9 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
   const { company, snapshot: snap, brief } = acct;
   const ev = snap ? await getEvidence(snap.id) : [];
   const evidence = pickEvidence(ev.map((e) => ({ ref: e.ref, source: e.source, title: e.title, snippet: e.snippet, url: e.url, observedAt: e.observedAt })));
-  const history = snap ? await getHistory(company.id, tab === "history" ? 26 : 2) : [];
-  const prevSnap = history.find((h) => h.id !== snap?.id) ?? null;
+  const history = snap ? await getHistory(company.id, tab === "history" ? 26 : 12) : [];
+  // "last week" = the most recent snapshot that is at least 6 days older than this one
+  const prevSnap = snap ? history.find((h) => h.id !== snap.id && snap.createdAt.getTime() - h.createdAt.getTime() >= 6 * 86_400_000 - 3_600_000) ?? null : null;
 
   const langs = snap?.languages ?? [];
   const dom = dominantLanguages(langs);
@@ -192,11 +193,11 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
               <div className="mono mt-1.5 text-[10.5px] text-faint">commits per week · last 13 weeks{act?.wowChangePct != null && ` · ${act.wowChangePct > 0 ? "+" : ""}${act.wowChangePct}% vs the 30 days before`}{act?.botShare ? ` · bots excluded` : ""}</div>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 {[
-                  [act?.commits30, "commits · 30d"], [act?.reposPushed30, "repos pushed · 30d"], [act?.openRoles, act?.totalRoles ? `eng roles (of ${fmtInt(act.totalRoles)} total)` : "open eng roles"],
+                  [act?.commits30, "commits · 30d"], [act?.reposPushed30, "repos pushed · 30d"], [act?.jobsFound === false ? "none" : act?.openRoles, act?.jobsFound === false ? "jobs: board not found" : act?.totalRoles ? `eng roles (of ${fmtInt(act.totalRoles)} total)` : "open eng roles"],
                   [act?.releases90, "releases · 90d"], [act?.blogPosts90, "blog posts · 90d"], [act?.talks12mo, "talks · 12mo"],
                 ].map(([n, l]) => (
                   <div key={l as string} className="rounded-input bg-raised px-3 py-2.5">
-                    <div className="mono text-[20px] font-medium leading-tight">{act?.commitsKnown === false && l === "commits · 30d" ? "n/a" : fmtInt((n as number) ?? 0)}</div>
+                    <div className={cn("mono text-[20px] font-medium leading-tight", n === "none" && "text-faint")}>{n === "none" ? "n/a" : act?.commitsKnown === false && l === "commits · 30d" ? "n/a" : fmtInt((n as number) ?? 0)}</div>
                     <div className="mt-0.5 text-[11px] text-muted">{l}</div>
                   </div>
                 ))}
@@ -243,7 +244,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
             </div>
 
             <section className="card h-fit p-5" aria-labelledby="chg">
-              <div className="mb-3 flex items-center justify-between"><h2 id="chg" className="label">What changed since the last refresh</h2>{prevSnap && <span className="mono text-[11px] text-faint">{prevSnap.weekOf} → {snap.weekOf}</span>}</div>
+              <div className="mb-3 flex items-center justify-between"><h2 id="chg" className="label">What changed since last week</h2>{prevSnap ? <span className="mono text-[11px] text-faint">{prevSnap.createdAt.toISOString().slice(0, 10)} → {snap!.createdAt.toISOString().slice(0, 10)}</span> : <span className="mono text-[11px] text-faint">First week tracked</span>}</div>
               <DiffView changes={changes} evidence={evidence} />
               {goodWeek && <p className="mt-4 text-[13px] text-signal">→ {goodWeek}</p>}
             </section>

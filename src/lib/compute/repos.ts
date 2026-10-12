@@ -7,7 +7,8 @@ export function isDocsRepo(name: string): boolean {
     /^(docs?|documentation|website|websites?|www|site|sites?|blog|examples?|samples?|demos?|playground|tutorials?)$/.test(n) ||
     /\.github\.io$/.test(n) ||
     /^awesome-/.test(n) ||
-    /(^|[-_])(docs?|documentation|website|examples?|samples?)([-_]|$)/.test(n)
+    /(^|[-_])(docs?|documentation|website|examples?|samples?)([-_]|$)/.test(n) ||
+    /[-_](samples?|examples?|demos?|starters?)$/.test(n)
   );
 }
 

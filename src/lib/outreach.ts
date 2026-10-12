@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { makeCheckContext } from "@/lib/ai/context";
 import { generateEmail } from "@/lib/ai/generate";
@@ -67,6 +67,8 @@ export async function createDraftFor(
     ctx,
   );
   if (opts.onlyIfVerified && e.checkStatus !== "verified") return { ok: false, error: `Email draft did not pass the check: ${e.checkReasons[0] ?? "see reasons"}` };
+  // one open draft per account: a new draft replaces any draft that has not been sent
+  await getDb().update(drafts).set({ status: "replaced" }).where(and(eq(drafts.companyId, companyId), inArray(drafts.status, ["draft", "internal_review", "approved", "opened"])));
   const [row] = await getDb().insert(drafts).values({
     companyId, snapshotId: snap.id, recipientName: recipient?.name ?? null, recipientEmail: recipient?.email ?? null,
     subject: e.email.subject, body: e.email.body, evidenceIds: e.email.evidence_ids, status: "draft",

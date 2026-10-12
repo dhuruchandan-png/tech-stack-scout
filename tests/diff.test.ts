@@ -17,7 +17,7 @@ describe("diffSnapshots (what changed)", () => {
   it("says so on a first snapshot instead of inventing changes", () => {
     const d = diffSnapshots(null, { ...prev });
     expect(d).toHaveLength(1);
-    expect(d[0].text).toMatch(/first snapshot/i);
+    expect(d[0].text).toMatch(/first week tracked/i);
   });
 
   it("reports a language shift of 5+ points on a language used in 3+ repos", () => {

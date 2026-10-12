@@ -42,7 +42,7 @@ describe("callFirstScore", () => {
   });
   it("penalises accounts already contacted", () => expect(callFirstScore({ ...input, alreadyContacted: true }).score).toBe(18 - 6));
   it("does not count 'first snapshot' or 'no material change' as news", () => {
-    const r = callFirstScore({ ...input, changes: [change("First snapshot for this account.", "~"), change("No material change since last week.", "~")] });
+    const r = callFirstScore({ ...input, changes: [change("First week tracked, no comparison yet.", "~"), change("No material change since last week.", "~")] });
     expect(r.score).toBe(4 + 3 + 2 + 3);
   });
 });
@@ -83,9 +83,10 @@ describe("tech dictionary", () => {
 
 describe("source filters", () => {
   it("accepts a video only from the company's own channel, or when the title names the company AND a tech keyword", () => {
-    expect(judgeVideo({ title: "Running 27 services on EKS: Acme at KubeCon" }, "Acme")).toMatchObject({ accept: true, own: false });
+    expect(judgeVideo({ title: "Acme: running 27 services on EKS (KubeCon talk)" }, "Acme")).toMatchObject({ accept: true, own: false });
     expect(judgeVideo({ title: "Acme engineering at scale" }, "Acme").accept).toBe(true);
     expect(judgeVideo({ title: "Inside our platform architecture", channelId: "UCown" }, "Acme", "UCown")).toMatchObject({ accept: true, own: true });
+    expect(judgeVideo({ title: "Jerry: Multi-Tenant AI Agent Workflow Builder | Built with Next.js, Acme engineering" }, "Acme").accept).toBe(false); // names the company late: a third-party project
     expect(judgeVideo({ title: "KubeCon keynote about nothing" }, "Acme").accept).toBe(false); // does not name the company
     expect(judgeVideo({ title: "Why Acme is great" }, "Acme").accept).toBe(false); // no tech keyword
   });
@@ -145,4 +146,32 @@ describe("dates and costs", () => {
     expect(n.days).toBe(4);
   });
   it("prices Gemini Flash tokens", () => expect(costOf(1_000_000, 1_000_000)).toBeCloseTo(2.8, 5));
+});
+
+describe("final-fix rules", () => {
+  it("HN: the company name must stand alone, not inside another word", async () => {
+    const { keepHn } = await import("@/lib/sources/hn");
+    expect(keepHn({ title: "A bi-temporal graph database in Rust", url: null }, "Temporal", "temporal.io")).toBe(false);
+    expect(keepHn({ title: "Temporal on Kubernetes at scale", url: null }, "Temporal", "temporal.io")).toBe(true);
+  });
+  it("roles: Professional Services and Solutions Architect are not engineering roles", () => {
+    expect(isEngineeringRole("Senior Professional Services Engineer")).toBe(false);
+    expect(isEngineeringRole("Solutions Architect")).toBe(false);
+    expect(isEngineeringRole("Senior Platform Engineer")).toBe(true);
+  });
+  it("repos: -samples/-examples/-demo/-starter repos are excluded from Q1", async () => {
+    const { isDocsRepo } = await import("@/lib/compute/repos");
+    for (const n of ["hello-samples", "api-examples", "chat-demo", "next-starter"]) expect(isDocsRepo(n), n).toBe(true);
+    expect(isDocsRepo("payments-service")).toBe(false);
+  });
+  it("infra: files under test/, fixtures/, examples/ are ignored", async () => {
+    const { isTestPath } = await import("@/lib/compute/infra");
+    for (const p of ["test/main.tf", "tests/a/b.tf", "test-fixtures/x.tf", "examples/k8s/a.yaml", "pkg/fixtures/y.tf"]) expect(isTestPath(p), p).toBe(true);
+    expect(isTestPath("deploy/main.tf")).toBe(false);
+  });
+  it("confidence: no job board and no commits cannot be High", () => {
+    expect(computeConfidence({ ...base, jobsFound: false, commits30: 0 }).level).toBe("low");
+    expect(computeConfidence({ ...base, jobsFound: false, commits30: 80 }).level).toBe("medium");
+    expect(computeConfidence({ ...base, jobsFound: true, commits30: 80 }).level).toBe("high");
+  });
 });

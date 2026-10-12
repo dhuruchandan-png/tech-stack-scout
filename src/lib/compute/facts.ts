@@ -34,7 +34,7 @@ export function factsToText(f: Facts): string {
   if (a) {
     L.push(
       `Q3 activity: ${a.level}. Commits last 30 days ${a.commits30}, last 90 days ${a.commits90}. Repos pushed last 30 days ${a.reposPushed30}. ` +
-        `Releases last 90 days ${a.releases90}. Open engineering roles ${a.openRoles}${a.totalRoles ? ` (of ${a.totalRoles} total roles)` : ""}. Blog posts last 90 days ${a.blogPosts90}. Talks last 12 months ${a.talks12mo}.` +
+        `Releases last 90 days ${a.releases90}. ${a.jobsFound === false ? "Jobs data unavailable (no Greenhouse, Lever or Ashby job board found). Do not state a role count." : `Open engineering roles ${a.openRoles}${a.totalRoles ? ` (of ${a.totalRoles} total roles)` : ""}.`} Blog posts last 90 days ${a.blogPosts90}. Talks last 12 months ${a.talks12mo}.` +
         (a.wowChangePct != null ? ` Commits changed ${a.wowChangePct}% vs last week's snapshot.` : ""),
     );
   }

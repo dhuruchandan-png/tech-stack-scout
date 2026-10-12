@@ -224,12 +224,13 @@ export function checkCitationFit(sentence: string, ids: string[], ctx: CheckCont
 
   if (opts.topics !== false && ctx.evidenceTopic) {
     const citedTopics = new Set(valid.map((id) => ctx.evidenceTopic![id] as Topic).filter(Boolean));
-    for (const topic of sentenceTopics(s)) {
-      const ok = ALLOWED[topic].some((t) => citedTopics.has(t));
-      if (!ok) {
-        const got = [...citedTopics].join(", ") || "nothing";
-        reasons.push(`A sentence about ${topic} cites ${got} evidence, not ${ALLOWED[topic].join(" or ")}: “${s.slice(0, 70)}…”`);
-      }
+    // an item that spans two topics counts for both ("Cloud footprint (from public code and open roles)")
+    for (const id of valid) if (/from public code and open roles/i.test(coreOf(ctx, id))) { citedTopics.add("infra"); citedTopics.add("jobs"); citedTopics.add("repo"); }
+    // a sentence passes if ANY cited item's kind matches ANY topic detected in it (words like "Rust SDK" or "open roles" can misfire)
+    const topics = sentenceTopics(s);
+    if (topics.length && !topics.some((topic) => ALLOWED[topic].some((t) => citedTopics.has(t)))) {
+      const got = [...citedTopics].join(", ") || "nothing";
+      reasons.push(`A sentence about ${topics.join(" / ")} cites ${got} evidence, not ${[...new Set(topics.flatMap((t) => ALLOWED[t]))].join(" or ")}: “${s.slice(0, 70)}…”`);
     }
   }
 
@@ -268,14 +269,15 @@ function checkIds(ids: string[], ctx: CheckContext): string[] {
 /**
  * The opener. It must (a) name one concrete, checkable thing that appears in a cited item's title or snippet,
  * (b) connect it to a specific pain (CI, builds, tests, pipelines, local environments, deploys, monorepo, services),
- * (c) be at most 30 words, with no flattery, no "streamline" and no "opportunity to".
+ * (c) be at most 2 sentences and 35 words, with no flattery, no "streamline" and no "opportunity to".
  */
 export function checkOpener(textIn: string, ids: string[], ctx: CheckContext): CheckResult {
   const text = stripCites(textIn);
   const reasons: string[] = [];
   const n = wc(text);
-  if (n < 10 || n > 30) reasons.push(`Opener is ${n} words; must be 10–30`);
-  if (/[.!?]\s+\S/.test(text.replace(/\b(e\.g|i\.e)\./gi, ""))) reasons.push("Opener must be one sentence");
+  if (n < 10 || n > 35) reasons.push(`Opener is ${n} words; must be 10–35`);
+  const sentenceCount = text.replace(/\b(e\.g|i\.e)\./gi, "").split(/(?<=[.!?])\s+/).filter((x) => x.trim()).length;
+  if (sentenceCount > 2) reasons.push("Opener must be at most two sentences");
   reasons.push(...checkIds(ids, ctx));
   reasons.push(...commonChecks(text, ctx));
   const fl = text.match(FLATTERY);

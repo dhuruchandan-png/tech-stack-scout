@@ -27,7 +27,7 @@ describe("checkOpener", () => {
   it("accepts the target shape: a concrete repo, a number from the evidence, one specific pain", () => {
     const c = { ...ctx, evidenceText: { ...ctx.evidenceText, E4: "Repo pi-temporal TypeScript 44 commits", E5: "Open engineering roles: 17 mention Kubernetes" }, validRefs: new Set(["E1", "E2", "E3", "E4", "E5"]) };
     const two = "Saw pi-temporal go up this week alongside 17 open Kubernetes roles. Curious how long CI takes when a change touches several of your Go services?";
-    expect(checkOpener(two, ["E4", "E5"], c).reasons).toContain("Opener must be one sentence"); // the opener is ONE sentence
+    expect(checkOpener(two, ["E4", "E5"], c).reasons).toEqual([]); // up to two sentences are fine
     const one = "Saw pi-temporal go up alongside 17 open Kubernetes roles, so how long does CI take when a change touches several of your Go services?";
     expect(checkOpener(one, ["E4", "E5"], c).reasons).toEqual([]);
   });
@@ -60,11 +60,22 @@ describe("checkOpener", () => {
     expect(checkOpener(GOOD, [], ctx).reasons).toContain("Cites no evidence");
   });
 
-  it("fails on length outside 10–30 words", () => {
+  it("fails on length outside 10–35 words", () => {
     const r = checkOpener("Love your Go work.", ["E1"], ctx);
-    expect(r.reasons.some((x) => /must be 10–30/.test(x))).toBe(true);
+    expect(r.reasons.some((x) => /must be 10–35/.test(x))).toBe(true);
     const long = Array(40).fill("word").join(" ") + ".";
-    expect(checkOpener(long, ["E1"], ctx).reasons.some((x) => /must be 10–30/.test(x))).toBe(true);
+    expect(checkOpener(long, ["E1"], ctx).reasons.some((x) => /must be 10–35/.test(x))).toBe(true);
+  });
+
+  it("fails on three sentences", () => {
+    const t = "Saw pi-temporal go up. Also 17 open Kubernetes roles. Curious how long CI takes when a change touches your Go services?";
+    const c = { ...ctx, evidenceText: { ...ctx.evidenceText, E4: "Repo pi-temporal 44 commits", E5: "17 Kubernetes roles" }, validRefs: new Set(["E4", "E5"]) };
+    expect(checkOpener(t, ["E4", "E5"], c).reasons).toContain("Opener must be at most two sentences");
+  });
+
+  it("a topic passes when ANY cited item matches ANY topic in the sentence (Rust SDK, open roles inside a cloud sentence)", () => {
+    const c: CheckContext = { ...ctx, validRefs: new Set(["E1", "E2"]), evidenceTopic: { E1: "infra", E2: "repo" }, evidenceText: { E1: "Cloud footprint (from public code and open roles) Runs on AWS", E2: "Repo rust-sdk" }, evidenceCore: { E1: "Cloud footprint (from public code and open roles) Runs on AWS", E2: "Repo rust-sdk" } };
+    expect(checkCitationFit("Their Rust SDK and multiple languages sit beside AWS deployed from open roles.", ["E1"], c)).toEqual([]);
   });
 
   it("fails when it names something that is not in the cited evidence (a made-up claim)", () => {
@@ -123,9 +134,9 @@ describe("checkOpener", () => {
     expect(checkOpener(t, ["E1", "E3"], ctx).reasons.some((x) => /number 99/.test(x))).toBe(true);
   });
 
-  it("fails on two sentences", () => {
+  it("allows two sentences but not a run-on of three", () => {
     const t = "Your Go monorepo CI post from 22 to 9 minutes stood out. With 27 gRPC services we help teams get that speed in local dev and testing.";
-    expect(checkOpener(t, ["E1", "E3"], ctx).reasons).toContain("Opener must be one sentence");
+    expect(checkOpener(t, ["E1", "E3"], ctx).reasons).not.toContain("Opener must be at most two sentences");
   });
 });
 

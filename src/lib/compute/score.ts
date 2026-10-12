@@ -17,7 +17,7 @@ export type ScoreInput = {
 export function callFirstScore(i: ScoreInput): { score: number; reason: string } {
   let score = 0;
   const reasons: { w: number; t: string }[] = [];
-  const meaningful = (i.changes ?? []).filter((c) => c.sign === "+" || (c.sign === "~" && !/first snapshot|no material/i.test(c.text)));
+  const meaningful = (i.changes ?? []).filter((c) => c.sign === "+" || (c.sign === "~" && !/first (snapshot|week)|no material/i.test(c.text)));
   const nChanges = Math.min(meaningful.length, 4);
   if (nChanges) {
     score += nChanges * 3;

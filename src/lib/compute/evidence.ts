@@ -49,7 +49,7 @@ export function buildEvidence(i: Inputs): EvidenceDraft[] {
     const a = i.activity;
     out.push({
       source: "github", kind: "activity", title: "Build activity (last 30 days)",
-      snippet: `${n(a.commits30)} commits in 30 days across ${n(a.reposPushed30)} repos pushed; ${n(a.commits90)} commits in 90 days; ${n(a.releases90)} repos shipped a release in 90 days; ${n(a.activeRepos ?? 0)} active repos${a.botShare ? " (bot commits excluded)" : ""}`,
+      snippet: `${n(a.commits30)} commits in 30 days across ${n(a.reposPushed30)} repos pushed; ${n(a.commits90)} commits in 90 days; ${n(a.releases90)} repos shipped a release in 90 days; ${n(a.activeRepos ?? 0)} active repos${a.botShare ? " (bot commits excluded)" : ""}${a.commitsPrev30 != null && a.commitsPrev30 > 0 ? `; commits before (days 31-60): ${n(a.commitsPrev30)}, commits now (last 30 days): ${n(a.commits30)}, change ${a.wowChangePct != null ? `${a.wowChangePct > 0 ? "+" : ""}${a.wowChangePct}%` : "n/a"}` : ""}`,
       url: orgUrl, observedAt: new Date(), meta: { computed: true },
     });
   }

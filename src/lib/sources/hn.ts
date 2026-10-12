@@ -10,7 +10,9 @@ export function keepHn(h: Pick<Hit, "title" | "url">, company: string, domain: s
   const host = h.url ? hostOf(h.url) : null;
   if (host && (host === domain || host.endsWith(`.${domain}`))) return true;
   const title = h.title ?? "";
-  return title.toLowerCase().includes(company.toLowerCase()) && findTech(title).length > 0;
+  // the company name must stand alone: "bi-temporal graph database" is not about Temporal
+  const esc = company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\w-])${esc}(?![\\w-])`, "i").test(title) && findTech(title).length > 0;
 }
 
 /** Step 5 (HN): Algolia search, last 90 days, no key needed. */

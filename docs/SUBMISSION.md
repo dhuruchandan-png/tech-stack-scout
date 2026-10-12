@@ -46,7 +46,7 @@ Note for the viva: the brief says **Supabase**. We used **Neon** (also Postgres)
 
 **How do you stop Gemini making things up?** Four layers: (1) it only receives an evidence list, never raw web pages; (2) every sentence must cite an evidence id; (3) a code check confirms the ids exist and the named tools and numbers literally appear in the evidence; (4) failures are regenerated once, then marked Needs review and blocked from approval. The check caught real cases, for example a model adding "WebAssembly" to Cloudflare's brief when it was not in the evidence.
 
-**What happens when a source is missing or an API fails?** Nothing is guessed. A missing source shows "Not found" with a tip to add an override. A failed source keeps last week's data, marked "Stale since…". The run is partial, not failed. Freshworks has no public GitHub org, so it shows Low confidence honestly.
+**What happens when a source is missing or an API fails?** Nothing is guessed. A missing source shows "Not found" with a tip to add an override. A failed source keeps last week's data, marked "Stale since…". The run is partial, not failed. Where no job board is found it says "board not found" instead of 0 roles, and confidence drops when sources are missing.
 
 **How does it stay inside free tiers and function limits?** Each company runs in its own request (60s). A weekly cron fans out at concurrency 2. Raw API responses are cached for 6 hours. GitHub uses GraphQL, and very large orgs fall back to a lighter query. Gemini cost is about half a cent per company.
 

@@ -29,7 +29,7 @@ export default async function TodayPage() {
   const top = callTheseFirst(accts, 5);
 
   const feed = accts
-    .flatMap((a) => (a.snapshot?.changes ?? []).filter((c) => !/first snapshot|no material/i.test(c.text)).map((c) => ({ a, c })))
+    .flatMap((a) => (a.snapshot?.changes ?? []).filter((c) => !/first (snapshot|week)|no material/i.test(c.text)).map((c) => ({ a, c })))
     .sort((x, y) => (y.a.snapshot!.createdAt.getTime() - x.a.snapshot!.createdAt.getTime()) || (x.c.sign === "+" ? -1 : 1))
     .slice(0, 14);
 

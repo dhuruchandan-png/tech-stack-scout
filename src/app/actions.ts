@@ -261,6 +261,8 @@ export async function approveDraft(draftId: number): Promise<R<{ hubspot: string
     const { ctx, brief, snap, refs } = await loadSnapshotContext(d.companyId);
     const rc = recheckEmail({ subject: d.subject, body: d.body, evidence_ids: d.evidenceIds ?? [] }, ctx);
     if (rc.checkStatus !== "verified") return { ok: false, error: `Check failed: ${rc.checkReasons[0]}` };
+    // the email is built on the first line, so the first line must pass the same check
+    if (brief?.checkStatus !== "verified") return { ok: false, error: "The first line this email is built on is marked Needs review. Fix it on the account page, then approve." };
     await db.update(drafts).set({ status: "approved", approvedAt: new Date(), approvedBy: "Nikhil" }).where(eq(drafts.id, draftId));
     // AI text reaches HubSpot only now
     let hubspot = "skipped";

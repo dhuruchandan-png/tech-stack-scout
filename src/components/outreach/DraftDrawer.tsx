@@ -129,6 +129,7 @@ function Editor({ card, onClose, allowlist, internalDomain, testMode }: { card: 
             <input className="input" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} disabled={locked} aria-label="Recipient name" />
             <input className="input" type="email" placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={locked} aria-label="Recipient email" />
           </div>
+          <p className="mt-1.5 text-[11.5px] text-faint">Type a name and email if none was found. They are saved on the draft only: Scout never emails this address, you do.</p>
         </div>
 
         <div>

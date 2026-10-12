@@ -16,6 +16,8 @@ export type DraftCard = {
   status: string; checkStatus: string | null; checkReasons: string[]; evidenceIds: string[];
   createdAt: string; approvedAt: string | null; sentAt: string | null; reviewers: string[];
   evidence: EvidenceMap;
+  /** the account's real fingerprint (languages, infra categories, activity) for the mini ring */
+  fp: { languages: { name: string; color: string; share: number }[]; categories: string[]; level: string };
 };
 
 const COLS = [
@@ -75,8 +77,8 @@ export function OutreachBoard({ cards, metrics, openId, allowlist, internalDomai
                   {list.map((c) => (
                     <button key={c.id} onClick={() => setOpen(c.id)} className={cn("card block w-full animate-rise p-3.5 text-left transition hover:border-signal/50", c.checkStatus === "needs_review" && col.id !== "sent" && "border-change/50")}>
                       <div className="flex items-center gap-2.5">
-                        <Fingerprint size={26} languages={[]} categories={[]} level="medium" />
-                        <div className="min-w-0"><div className="truncate text-[13.5px] font-semibold">{c.company}</div><div className="truncate text-[11.5px] text-muted">{c.recipientName ?? c.recipientEmail ?? "No recipient yet"}</div></div>
+                        <Fingerprint size={26} languages={c.fp.languages} categories={c.fp.categories} level={c.fp.level} />
+                        <div className="min-w-0"><div className="truncate text-[13.5px] font-semibold">{c.company}</div><div className="truncate text-[11.5px] text-muted">{c.recipientName ?? c.recipientEmail ?? "Add a recipient"}</div></div>
                       </div>
                       <div className="mt-2.5 line-clamp-2 text-[12.5px]">{c.subject || "(no subject)"}</div>
                       <div className="mt-2.5 flex items-center justify-between text-[11px]">

@@ -28,7 +28,8 @@ export type Row = {
 type Filters = { q: string; cloud: string; lang: string; tool: string; ms: string; activity: string; confidence: string; changed: boolean };
 const EMPTY: Filters = { q: "", cloud: "", lang: "", tool: "", ms: "", activity: "", confidence: "", changed: false };
 type SortKey = "name" | "activity" | "confidence" | "freshness" | "microservices";
-const ORDER = { high: 3, medium: 2, low: 1, dormant: 0, strong: 3, medium: 2.5, some: 2.5, weak: 1.5, none: 1, unknown: 0 } as Record<string, number>;
+const ORDER = { high: 3, medium: 2, low: 1, dormant: 0 } as Record<string, number>; // activity and confidence
+const MS_ORDER = { strong: 4, medium: 3, some: 3, weak: 2, none: 1, unknown: 0 } as Record<string, number>; // microservices signal
 
 const COLS = [
   { key: "q1", label: "Q1 · Languages" }, { key: "q2", label: "Q2 · Cloud & infra" }, { key: "ms", label: "Microservices" },
@@ -83,7 +84,7 @@ export function WatchlistTable({ rows, removed, admin, openAdd, initial }: { row
       sort.key === "name" ? r.name.toLowerCase()
       : sort.key === "activity" ? ORDER[r.activity] ?? 0
       : sort.key === "confidence" ? ORDER[r.confidence ?? "low"] ?? 0
-      : sort.key === "microservices" ? ORDER[r.microservices] ?? 0
+      : sort.key === "microservices" ? MS_ORDER[r.microservices] ?? 0
       : r.snapshotAt ? new Date(r.snapshotAt).getTime() : 0;
     return out.sort((a, b) => (val(a) > val(b) ? 1 : val(a) < val(b) ? -1 : 0) * sort.dir);
   }, [rows, filters, sort]);

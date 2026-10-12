@@ -100,7 +100,7 @@ export function keyNouns(text: string, company: string): string[] {
       if (comp.split(/\s+/).includes(low) || low === comp) return;
       if (STOP_CAPS.has(low)) return;
       if (/\d/.test(t) || /[_./]/.test(t)) {
-        if (/^\d+-?(minute|min|mins|minutes)$/i.test(t)) return; // "20-minute call" is not a claim
+        if (/^\d+-?(minute|min|mins|minutes|day|days|week|weeks|month|months|year|years)$/i.test(t)) return; // "20-minute call", "30-day" are not claims
         nouns.add(t);
         return;
       }
@@ -192,12 +192,14 @@ export function sentenceTopics(s: string): Topic[] {
 
 /** Evidence kinds that may support a sentence about each topic. */
 const ALLOWED: Record<Topic, Topic[]> = {
-  activity: ["activity", "repo"],
-  language: ["language", "repo"],
-  infra: ["infra", "jobs", "repo"],
-  jobs: ["jobs"],
-  blog: ["blog"],
-  talk: ["talk"],
+  // a post, talk or HN story that mentions a release or a tool is still evidence for the sentence that describes it
+  activity: ["activity", "repo", "blog", "talk", "hn"],
+  language: ["language", "repo", "blog", "talk"],
+  infra: ["infra", "jobs", "repo", "blog", "talk", "hn"],
+  // the activity item also states the role, post and talk counts, so "no job board" or "zero posts" can cite it
+  jobs: ["jobs", "activity"],
+  blog: ["blog", "activity"],
+  talk: ["talk", "activity"],
   hn: ["hn"],
   repo: ["repo"],
 };
@@ -216,7 +218,7 @@ export function numbersIn(s: string): string[] {
 const coreOf = (ctx: CheckContext, id: string) => (ctx.evidenceCore?.[id] ?? ctx.evidenceText[id] ?? "").toLowerCase();
 
 /** Does this sentence cite items of the right kind, and do its numbers appear in the items it cites? */
-export function checkCitationFit(sentence: string, ids: string[], ctx: CheckContext, opts: { topics?: boolean } = {}): string[] {
+export function checkCitationFit(sentence: string, ids: string[], ctx: CheckContext, opts: { topics?: boolean; numbersFromFacts?: boolean } = {}): string[] {
   const reasons: string[] = [];
   const s = stripCites(sentence);
   const valid = ids.filter((id) => ctx.validRefs.has(id));
@@ -234,7 +236,8 @@ export function checkCitationFit(sentence: string, ids: string[], ctx: CheckCont
     }
   }
 
-  const core = plainNums(valid.map((id) => coreOf(ctx, id)).join(" \n "));
+  // for summary paragraphs and talking points a number may also come from the code-computed facts the model was given
+  const core = plainNums(valid.map((id) => coreOf(ctx, id)).join(" \n ") + (opts.numbersFromFacts ? " \n " + ctx.factsText.toLowerCase() : ""));
   for (const num of numbersIn(s)) {
     if (!new RegExp(`(?<![\\d.])${num.replace(".", "\\.")}(?!\\d)`).test(core)) {
       reasons.push(`The number ${num} does not appear in the cited item${valid.length > 1 ? "s" : ""} (${valid.join(", ")})`);
@@ -254,7 +257,9 @@ function commonChecks(text: string, ctx: CheckContext): string[] {
   if (c) {
     const esc = c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const standalone = new RegExp(`(?<![\\w/@-])(?<!\\w\\.)${esc}(?![\\w/-]|\\.\\w)`, "gi");
-    const bad = (text.match(standalone) ?? []).some((m) => m !== c);
+    // a repo named after the company ("the posthog repository") is spelled in lower case on purpose
+    const evAll = Object.values(ctx.evidenceText).join(" ").toLowerCase();
+    const bad = (text.match(standalone) ?? []).some((m) => m !== c && !(m === m.toLowerCase() && evAll.includes(`repo ${m}`)));
     if (bad) reasons.push(`Company name must be spelled exactly “${c}”`);
   }
   return reasons;
@@ -308,7 +313,7 @@ export function checkTalkingPoint(textIn: string, ids: string[], ctx: CheckConte
   reasons.push(...commonChecks(text, ctx));
   if (ids.length && ids.every((id) => ctx.validRefs.has(id))) {
     reasons.push(...checkNounsGrounded(text, ctx, ids).filter((r) => !r.startsWith("Names nothing specific")));
-    reasons.push(...checkCitationFit(text, ids, ctx));
+    reasons.push(...checkCitationFit(text, ids, ctx, { numbersFromFacts: true }));
   }
   return { ok: reasons.length === 0, reasons: [...new Set(reasons)] };
 }
@@ -331,7 +336,7 @@ export function checkSummary(paragraphs: string[], ctx: CheckContext): CheckResu
       // names must exist somewhere in this company's evidence; topic and numbers must fit what THIS sentence cites
       const names = checkNounsGrounded(stripCites(s), ctx, Object.keys(ctx.evidenceText)).filter((r) => !r.startsWith("Names nothing"));
       if (names.length) reasons.push(`${label}: ${names[0]}`);
-      const fit = checkCitationFit(s, ids, ctx);
+      const fit = checkCitationFit(s, ids, ctx, { numbersFromFacts: true });
       if (fit.length) reasons.push(`${label}: ${fit[0]}`);
     }
   });

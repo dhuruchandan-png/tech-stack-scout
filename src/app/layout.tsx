@@ -10,7 +10,7 @@ const newsreader = Newsreader({ subsets: ["latin"], variable: "--font-newsreader
 
 export const metadata: Metadata = {
   title: { default: "Tech Stack Scout", template: "%s · Tech Stack Scout" },
-  description: "Engineering context for every account on your watchlist, refreshed weekly, with receipts.",
+  description: "How every target account builds, refreshed weekly, with a source behind every claim.",
 };
 
 // Runs before paint so the theme never flashes.

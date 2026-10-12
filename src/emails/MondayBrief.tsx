@@ -41,7 +41,7 @@ export default function MondayBriefEmail(p: Props) {
           ))}
 
           <Text style={label}>READY FOR REVIEW</Text>
-          <Text style={{ fontSize: 13, margin: 0 }}>{p.ready} verified opener{p.ready === 1 ? "" : "s"} ready for your review.</Text>
+          <Text style={{ fontSize: 13, margin: 0 }}>{p.ready} verified first line{p.ready === 1 ? "" : "s"} ready for your review.</Text>
 
           {p.problems.length > 0 && (
             <>

@@ -17,7 +17,6 @@ import { Fingerprint } from "@/components/viz/Fingerprint";
 import { HeatStrip } from "@/components/viz/HeatStrip";
 import { LanguageBar } from "@/components/viz/LanguageBar";
 import { dominantLanguages, pct } from "@/lib/compute/languages";
-import { isAdmin } from "@/lib/auth";
 import { hubspotCompanyUrl } from "@/lib/hubspot";
 import { getYoutubeChannelId } from "@/db/raw";
 import { getAccountByDomain, getEvidence, getHistory, getQa, getRunsForCompany } from "@/lib/queries";
@@ -48,7 +47,6 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
   if (!acct) notFound();
 
   const { company, snapshot: snap, brief } = acct;
-  const admin = await isAdmin();
   const ev = snap ? await getEvidence(snap.id) : [];
   const evidence = pickEvidence(ev.map((e) => ({ ref: e.ref, source: e.source, title: e.title, snippet: e.snippet, url: e.url, observedAt: e.observedAt })));
   const history = snap ? await getHistory(company.id, tab === "history" ? 26 : 2) : [];
@@ -98,12 +96,12 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
               {!company.active && <span className="chip border-alert/40 text-alert">Removed</span>}
             </div>
           </div>
-          <AccountActions companyId={company.id} name={company.name} domain={company.domain} hubspotUrl={hubspotCompanyUrl(company.hubspotCompanyId)} admin={admin} hasOpener={!!brief?.openerText} hubspotFailed={acct.hubspot === "failed"} />
+          <AccountActions companyId={company.id} name={company.name} domain={company.domain} hubspotUrl={hubspotCompanyUrl(company.hubspotCompanyId)} hasOpener={!!brief?.openerText} hubspotFailed={acct.hubspot === "failed"} />
         </div>
       </section>
 
       {!snap ? (
-        <div className="card"><EmptyState title="No data for this account yet." hint="Tap Refresh now. Live GitHub, job-board, blog, talk and Hacker News data lands in about a minute." /></div>
+        <div className="card"><EmptyState title="No data for this account yet." hint="Click Refresh now to pull live GitHub, job-board, blog, talk and Hacker News data. It takes about a minute." /></div>
       ) : (
         <>
           {/* ---------- Q1 / Q2 / Q3 ---------- */}
@@ -217,7 +215,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
                     <p><CitedText text={brief.summaryP2 ?? ""} evidence={evidence} /></p>
                   </div>
                 ) : (
-                  <p className="text-[14px] text-muted">{brief?.checkStatus === "pending" ? "Summary pending (Gemini unavailable). The code-calculated facts above are current; the summary retries on the next run." : "No summary yet."}</p>
+                  <p className="text-[14px] text-muted">{brief?.checkStatus === "pending" ? "The summary is waiting because Gemini was unavailable. The numbers above are current, and the summary will be written on the next refresh." : "No summary yet. Click Refresh now."}</p>
                 )}
                 {brief?.summaryP1 && (
                   <p className="mt-5 flex flex-wrap items-center gap-x-2 text-[12px] text-ai">
@@ -230,7 +228,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
                 )}
               </section>
 
-              <OpenerCard companyId={company.id} text={brief?.openerText ?? null} ids={brief?.openerEvidenceIds ?? []} hook={brief?.hookType ?? null} status={brief?.checkStatus ?? null} reasons={brief?.checkReasons ?? []} evidence={evidence} admin={admin} />
+              <OpenerCard companyId={company.id} text={brief?.openerText ?? null} ids={brief?.openerEvidenceIds ?? []} hook={brief?.hookType ?? null} status={brief?.checkStatus ?? null} reasons={brief?.checkReasons ?? []} evidence={evidence} />
 
               {brief?.talkingPoints && brief.talkingPoints.length > 0 && (
                 <ul className="card divide-y divide-line">
@@ -245,7 +243,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
             </div>
 
             <section className="card h-fit p-5" aria-labelledby="chg">
-              <div className="mb-3 flex items-center justify-between"><h2 id="chg" className="label">What changed since last week</h2>{prevSnap && <span className="mono text-[11px] text-faint">{prevSnap.weekOf} → {snap.weekOf}</span>}</div>
+              <div className="mb-3 flex items-center justify-between"><h2 id="chg" className="label">What changed since the last refresh</h2>{prevSnap && <span className="mono text-[11px] text-faint">{prevSnap.weekOf} → {snap.weekOf}</span>}</div>
               <DiffView changes={changes} evidence={evidence} />
               {goodWeek && <p className="mt-4 text-[13px] text-signal">→ {goodWeek}</p>}
             </section>
@@ -265,7 +263,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
             {tab === "evidence" && <EvidenceTab items={ev.map((e) => ({ ref: e.ref, source: e.source, kind: e.kind, title: e.title, snippet: e.snippet, url: e.url, observedAt: e.observedAt?.toISOString() ?? null, stale: !!(e.meta as { stale?: boolean } | null)?.stale }))} />}
             {tab === "sources" && (
               <SourcesTab
-                companyId={company.id} admin={admin} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []}
+                companyId={company.id} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []}
                 jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} youtubeChannelId={youtubeChannelId} notes={company.notes}
                 status={snap.sourceStatus ?? {}}
                 matched={{
@@ -292,7 +290,7 @@ export default async function AccountPage({ params, searchParams }: { params: Pr
           ))}</div>
           <div className="pt-5">
             {tab === "runs" && <RunLog companyId={company.id} />}
-            {tab === "sources" && <SourcesTab companyId={company.id} admin={admin} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []} jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} youtubeChannelId={youtubeChannelId} notes={company.notes} status={{}} matched={{}} />}
+            {tab === "sources" && <SourcesTab companyId={company.id} org={company.githubOrg} orgConfidence={company.githubMatchConfidence} candidates={company.githubCandidates ?? []} jobProvider={company.jobBoardProvider} jobSlug={company.jobBoardSlug} blogRss={company.blogRssUrl} youtubeQuery={company.youtubeQuery} youtubeChannelId={youtubeChannelId} notes={company.notes} status={{}} matched={{}} />}
           </div>
         </div>
       )}

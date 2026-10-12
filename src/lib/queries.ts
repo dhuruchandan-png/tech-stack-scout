@@ -107,7 +107,7 @@ export async function getRunWithSteps(runId: number) {
  */
 export async function reapStuckRuns() {
   const db = getDb();
-  const msg = "Timed out: the serverless function was stopped before this run finished. Tap Retry.";
+  const msg = "Timed out: the serverless function was stopped before this run finished. Click Retry.";
   await db.update(runs).set({ status: "failed", finishedAt: new Date(), error: msg }).where(and(eq(runs.status, "running"), lt(runs.startedAt, new Date(Date.now() - 3 * 60_000))));
   await db.update(runs).set({ status: "failed", finishedAt: new Date(), error: msg }).where(and(eq(runs.status, "queued"), lt(runs.startedAt, new Date(Date.now() - 10 * 60_000))));
 }

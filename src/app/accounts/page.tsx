@@ -3,7 +3,6 @@ import { HealthStrip } from "@/components/ui/HealthStrip";
 import { WatchlistTable, type Row } from "@/components/watchlist/WatchlistTable";
 import { getAccounts, getSystemHealth } from "@/lib/queries";
 import { safe } from "@/lib/safe";
-import { isAdmin } from "@/lib/auth";
 import { DAY } from "@/lib/util";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +17,6 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
   });
   if (!res.ok) return <SetupNotice error={res.error} />;
   const { all, active, health } = res.data;
-  const admin = await isAdmin();
   const weekAgo = Date.now() - 7 * DAY;
 
   const rows: Row[] = active.map((a) => {
@@ -53,7 +51,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
     <div>
       <HealthStrip h={health} />
       <WatchlistTable
-        rows={rows} removed={removed} admin={admin} openAdd={sp.add === "1"}
+        rows={rows} removed={removed} openAdd={sp.add === "1"}
         initial={{ cloud: sp.cloud ?? "", lang: sp.lang ?? "", tool: sp.tool ?? "" }}
       />
     </div>

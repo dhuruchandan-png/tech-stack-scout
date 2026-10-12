@@ -3,9 +3,9 @@
 **AI-powered tech stack intelligence for a sales team's target-account watchlist.**
 Domain: B2B Sales Intelligence · Developer Tools. Built for Nikhil, an enterprise account executive who sells a developer productivity tool.
 
-> Live app: https://tech-stack-scout-six.vercel.app · Open access (no passcode needed)
+> Live app: https://tech-stack-scout-six.vercel.app · Open to anyone with the link, no login
 
-Everything is **viewable without login**. Every action that changes data or reaches outside (Refresh, add/remove company, draft, approve, send internally, HubSpot sync, mark sent, Q&A) needs the **Admin passcode**, checked **on the server** in every Server Action and POST route (an httpOnly cookie), not just hidden in the UI. The header shows **Locked** or **Unlocked**. If `ADMIN_PASSCODE` is not set, actions stay disabled. For a no-login demo, set `OPEN_ACCESS=true` explicitly (the header then shows "Open access"). Nothing reaches a prospect in any mode.
+The app is **open: no login, no passcode**, so anyone with the link can try every feature. Safety does not depend on a lock. Scout never emails a prospect: after each refresh it keeps a **finished, checked draft ready** for the top accounts, and Nikhil reads it, approves it and presses **Send** himself in his own Gmail or Outlook. Nothing reaches a prospect, and no AI text reaches HubSpot, until he approves.
 
 > **Submitting?** See [`docs/SUBMISSION.md`](docs/SUBMISSION.md). The in-app **How it works** page (`/how-it-works`) explains the whole workflow with live numbers.
 
@@ -135,7 +135,7 @@ On failure Gemini regenerates **once** with the reasons appended; still failing 
 1. **Neon:** create a project, copy the **pooled** connection string. Open the SQL editor and run `drizzle/0000_init.sql`, then `drizzle/seed.sql` (16 verified companies).
 2. **Keys:** [GitHub fine-grained token](https://github.com/settings/personal-access-tokens) (public repositories, read-only) · [YouTube Data API key](https://console.cloud.google.com/apis/library/youtube.googleapis.com) · [Gemini key](https://aistudio.google.com/apikey) · HubSpot private app (scopes: `crm.objects.companies` read/write, `crm.objects.contacts` read, `crm.schemas.companies` write, plus notes and emails write) · [Resend key](https://resend.com/api-keys).
 3. **Push to GitHub** (`.env.local` is git-ignored; check with `git status` before pushing).
-4. **Vercel:** Import the repo, add every variable from `.env.example`, deploy. Set `APP_BASE_URL` to the deployment URL and redeploy. Generate `CRON_SECRET` and `ADMIN_PASSCODE` as long random strings.
+4. **Vercel:** Import the repo, add every variable from `.env.example`, deploy. Set `APP_BASE_URL` to the deployment URL and redeploy. Optionally set `CRON_SECRET` to a long random string to protect the cron endpoints.
 5. **HubSpot properties:** Settings → *Create HubSpot properties*.
 6. **First full refresh:** unlock Admin mode → *Refresh all*, and watch the Run Console / Runs page.
 7. Click through every page in both themes.
@@ -157,7 +157,7 @@ npm run dev
 
 ### Environment
 
-See `.env.example`. `DATABASE_URL`, `GEMINI_API_KEY`, `GITHUB_TOKEN` and `ADMIN_PASSCODE` are required for the core loop (without a passcode the app is read-only). `TEST_EMAIL` is required while `EMAIL_TEST_MODE=true`: with it missing, every email send is blocked with a clear message. `YOUTUBE_API_KEY` adds talks; `HUBSPOT_PRIVATE_APP_TOKEN` adds CRM sync; `RESEND_API_KEY` + `INTERNAL_EMAIL_DOMAIN`/allowlist + `NIKHIL_EMAIL` add internal email. Missing optional keys degrade gracefully: the source shows as failed/not configured and the rest of the app works.
+See `.env.example`. `DATABASE_URL`, `GEMINI_API_KEY` and `GITHUB_TOKEN` are required for the core loop. `TEST_EMAIL` is required while `EMAIL_TEST_MODE=true`: with it missing, every email send is blocked with a clear message. `YOUTUBE_API_KEY` adds talks; `HUBSPOT_PRIVATE_APP_TOKEN` adds CRM sync; `RESEND_API_KEY` + `INTERNAL_EMAIL_DOMAIN`/allowlist + `NIKHIL_EMAIL` add internal email. Missing optional keys degrade gracefully: the source shows as failed/not configured and the rest of the app works.
 
 ### Cron on Vercel
 

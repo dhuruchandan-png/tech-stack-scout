@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/cron";
 import { waitUntil } from "@vercel/functions";
 import { enqueueAll, fanout } from "@/lib/fanout";
 
@@ -7,8 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** Mondays 6:00 IST (30 0 * * 1 UTC). Reads the watchlist and queues every active company. */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!cronAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const pairs = await enqueueAll("cron");

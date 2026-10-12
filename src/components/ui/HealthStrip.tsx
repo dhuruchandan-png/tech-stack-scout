@@ -24,7 +24,7 @@ export function HealthStrip({ h }: { h: H }) {
         <Stat label="Last full run" value={last} />
         <Stat label="Fresh ≤7d" value={`${h.fresh}/${h.total}`} tone={freshTone} />
         <Stat label="Evidence coverage" value={`${h.coveragePct}%`} />
-        <Stat label="Openers verified" value={`${h.verified}/${h.openers}`} tone={h.openers === h.verified ? "verified" : "change"} />
+        <Stat label="First lines verified" value={`${h.verified}/${h.openers}`} tone={h.openers === h.verified ? "verified" : "change"} />
         <Stat label="HubSpot synced" value={`${h.synced}/${h.total}`} tone={h.synced === h.total ? "verified" : "change"} />
         <Stat label="Gemini this week" value={`$${h.costWeek.toFixed(2)}`} tone="ai" />
       </div>

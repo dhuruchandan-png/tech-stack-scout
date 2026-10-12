@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { hubspotCreateProperties, saveSettings, sendTestEmail } from "@/app/actions";
 
 type Props = {
-  admin: boolean; productNotes: string; allowlist: string[]; recipients: string[]; hubspot: boolean; testMode: boolean; internalDomain: string; testEmail: string;
+  productNotes: string; allowlist: string[]; recipients: string[]; hubspot: boolean; testMode: boolean; internalDomain: string; testEmail: string;
   sources: { name: string; ok: boolean; detail: string }[]; crons: { path: string; when: string; cron: string }[];
 };
 
@@ -17,7 +17,6 @@ export function SettingsForm(p: Props) {
   const [testTo, setTestTo] = useState("");
   const [pending, start] = useTransition();
   const router = useRouter();
-  const guard = () => { if (!p.admin) { toast.error("Admin mode required. Unlock with the lock icon (top right)."); return false; } return true; };
   const lines = (s: string) => s.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
 
   return (
@@ -45,7 +44,7 @@ export function SettingsForm(p: Props) {
       </section>
 
       <div className="lg:col-span-2">
-        <button className="btn btn-primary" disabled={pending} onClick={() => guard() && start(async () => {
+        <button className="btn btn-primary" disabled={pending} onClick={() => start(async () => {
           const r = await saveSettings({ productNotes: notes, internalAllowlist: lines(allow), briefRecipients: lines(rec) });
           r.ok ? toast.success("Settings saved.") : toast.error(r.error); router.refresh();
         })}>Save settings</button>
@@ -62,7 +61,7 @@ export function SettingsForm(p: Props) {
           ))}
         </ul>
         <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-          <button className="btn" disabled={pending || !p.hubspot} title={p.hubspot ? "" : "Set HUBSPOT_PRIVATE_APP_TOKEN first"} onClick={() => guard() && start(async () => {
+          <button className="btn" disabled={pending || !p.hubspot} title={p.hubspot ? "" : "Set HUBSPOT_PRIVATE_APP_TOKEN first"} onClick={() => start(async () => {
             const r = await hubspotCreateProperties();
             if (!r.ok) { toast.error(r.error); return; }
             r.errors.length ? toast.error(`Some properties failed: ${r.errors[0]}`) : toast.success(`Properties ready: ${r.created.length} created, ${r.existed.length} already existed.`);
@@ -82,7 +81,7 @@ export function SettingsForm(p: Props) {
         )}
         <div className="mt-3 flex gap-2">
           <input className="input" placeholder="internal address" value={testTo} onChange={(e) => setTestTo(e.target.value)} aria-label="Test email recipient" />
-          <button className="btn" disabled={pending || !testTo} onClick={() => guard() && start(async () => { const r = await sendTestEmail(testTo); r.ok ? toast.success(`Test email sent to ${r.deliveredTo}.`) : toast.error(r.error); })}>Send test</button>
+          <button className="btn" disabled={pending || !testTo} onClick={() => start(async () => { const r = await sendTestEmail(testTo); r.ok ? toast.success(`Test email sent to ${r.deliveredTo}.`) : toast.error(r.error); })}>Send test</button>
         </div>
         <div className="label mb-2 mt-6">Cron schedule</div>
         <ul className="space-y-1.5 text-[13px]">

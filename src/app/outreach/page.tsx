@@ -1,6 +1,5 @@
 import { OutreachBoard, type DraftCard } from "@/components/outreach/OutreachBoard";
 import { SetupNotice } from "@/components/ui/States";
-import { isAdmin } from "@/lib/auth";
 import { getDb, schema } from "@/db";
 import { getDraftsWithCompany, getSettings } from "@/lib/queries";
 import { safe } from "@/lib/safe";
@@ -20,7 +19,6 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
   });
   if (!res.ok) return <SetupNotice error={res.error} />;
   const { rows, ev, settings } = res.data;
-  const admin = await isAdmin();
 
   const cards: DraftCard[] = rows.map(({ draft: d, name, domain }) => ({
     id: d.id, companyId: d.companyId, company: name, domain,
@@ -43,7 +41,7 @@ export default async function OutreachPage({ searchParams }: { searchParams: Pro
 
   return (
     <OutreachBoard
-      cards={cards} metrics={metrics} admin={admin} openId={sp.draft ? Number(sp.draft) : null}
+      cards={cards} metrics={metrics} openId={sp.draft ? Number(sp.draft) : null}
       allowlist={settings.internalAllowlist ?? []} internalDomain={process.env.INTERNAL_EMAIL_DOMAIN ?? ""} testMode={process.env.EMAIL_TEST_MODE === "true"}
     />
   );

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
-import { Activity, BookOpen, CalendarDays, Clock, ListChecks, Mail, Moon, Plus, Radar as RadarIcon, RefreshCw, Search, Settings, Lock } from "lucide-react";
+import { Activity, BookOpen, CalendarDays, Clock, ListChecks, Mail, Moon, Plus, Radar as RadarIcon, RefreshCw, Search, Settings, } from "lucide-react";
 import { useRuns } from "@/components/run/RunConsole";
 
 type C = { id: number; name: string; domain: string };
@@ -19,7 +19,7 @@ export function rememberAccount(domain: string) {
   } catch { /* storage blocked */ }
 }
 
-export function CommandPalette({ companies, admin }: { companies: C[]; admin: boolean }) {
+export function CommandPalette({ companies }: { companies: C[] }) {
   const [open, setOpen] = useState(false);
   const [recents, setRecents] = useState<string[]>([]);
   const router = useRouter();
@@ -83,23 +83,20 @@ export function CommandPalette({ companies, admin }: { companies: C[]; admin: bo
           </Command.Group>
           <Command.Group heading={<span className="label px-3">Actions</span>}>
             <Command.Item value="add company" className={item} onSelect={() => go("/accounts?add=1")}><Plus className="h-4 w-4" /> Add company</Command.Item>
-            <Command.Item value="refresh all" className={item} onSelect={() => { setOpen(false); refreshAll(); }}><RefreshCw className="h-4 w-4" /> Refresh all{!admin && <span className="ml-auto text-[11px] text-faint">admin</span>}</Command.Item>
+            <Command.Item value="refresh all" className={item} onSelect={() => { setOpen(false); refreshAll(); }}><RefreshCw className="h-4 w-4" /> Refresh all</Command.Item>
             <Command.Item value="toggle theme dark light" className={item} onSelect={() => {
               const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
               document.documentElement.setAttribute("data-theme", next);
               try { localStorage.setItem("tss-theme", next); } catch { /* blocked */ }
               setOpen(false);
             }}><Moon className="h-4 w-4" /> Toggle theme</Command.Item>
-            <Command.Item value="admin mode unlock" className={item} onSelect={() => setOpen(false)}><Lock className="h-4 w-4" /> Admin mode: use the lock icon, top right</Command.Item>
           </Command.Group>
           <Command.Group heading={<span className="label px-3">Accounts</span>}>
             {companies.map((c) => (
               <Command.Item key={c.domain} value={`${c.name} ${c.domain}`} className={item} onSelect={() => go(`/accounts/${c.domain}`)}>
                 <span className="truncate">{c.name}</span>
                 <span className="mono ml-auto text-[11px] text-faint">{c.domain}</span>
-                {admin && (
-                  <button className="kbd hover:text-signal" onClick={(e) => { e.stopPropagation(); setOpen(false); refresh(c.id, c.name); }} aria-label={`Refresh ${c.name}`}>refresh</button>
-                )}
+                <button className="kbd hover:text-signal" onClick={(e) => { e.stopPropagation(); setOpen(false); refresh(c.id, c.name); }} aria-label={`Refresh ${c.name}`}>refresh</button>
               </Command.Item>
             ))}
           </Command.Group>

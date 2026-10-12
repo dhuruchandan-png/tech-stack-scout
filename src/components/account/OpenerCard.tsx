@@ -10,18 +10,17 @@ import { ReceiptRow, type EvidenceMap } from "@/components/ui/Receipts";
 
 const HOOK: Record<string, string> = { repo: "Repo hook", hiring: "Hiring hook", blog: "Blog hook", talk: "Talk hook", infra: "Infra hook", activity: "Activity hook" };
 
-export function OpenerCard({ companyId, text, ids, hook, status, reasons, evidence, admin }: {
-  companyId: number; text: string | null; ids: string[]; hook: string | null; status: string | null; reasons: string[]; evidence: EvidenceMap; admin: boolean;
+export function OpenerCard({ companyId, text, ids, hook, status, reasons, evidence }: {
+  companyId: number; text: string | null; ids: string[]; hook: string | null; status: string | null; reasons: string[]; evidence: EvidenceMap;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text ?? "");
   const [pending, start] = useTransition();
   const router = useRouter();
-  const needAdmin = () => toast.error("Admin mode required. Unlock with the lock icon (top right).");
 
   const copy = async () => {
     if (!text) return;
-    try { await navigator.clipboard.writeText(text); toast.success("Opener copied."); } catch { toast.error("Could not copy. Select the text instead."); }
+    try { await navigator.clipboard.writeText(text); toast.success("First line copied."); } catch { toast.error("Could not copy. Select the text instead."); }
   };
 
   return (
@@ -32,22 +31,22 @@ export function OpenerCard({ companyId, text, ids, hook, status, reasons, eviden
         <CheckBadge status={status} reasons={reasons} />
         <div className="ml-auto flex gap-2">
           <button className="btn" onClick={copy} disabled={!text}><Copy className="h-3.5 w-3.5" /> Copy</button>
-          <button className="btn" disabled={pending} title="Regenerate with Gemini" onClick={() => admin ? start(async () => { const r = await regenerateBrief(companyId); r.ok ? (toast.success("New opener drafted and checked."), router.refresh()) : toast.error(r.error); }) : needAdmin()}>
+          <button className="btn" disabled={pending} title="Regenerate with Gemini" onClick={() => start(async () => { const r = await regenerateBrief(companyId); r.ok ? (toast.success("New first line written and checked."), router.refresh()) : toast.error(r.error); })}>
             <RefreshCw className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`} />
           </button>
-          <button className="btn" onClick={() => admin ? setEditing(!editing) : needAdmin()} aria-label="Edit opener"><Pencil className="h-3.5 w-3.5" /></button>
-          <button className="btn btn-human" disabled={pending || !text} onClick={() => admin ? start(async () => {
+          <button className="btn" onClick={() => setEditing(!editing)} aria-label="Edit first line"><Pencil className="h-3.5 w-3.5" /></button>
+          <button className="btn btn-human" disabled={pending || !text} onClick={() => start(async () => {
             const r = await createDraft(companyId);
-            if (r.ok) { toast.success("Draft created. Review it in Outreach."); router.push(`/outreach?draft=${r.id}`); } else toast.error(r.error);
-          }) : needAdmin()}><Send className="h-3.5 w-3.5" /> Draft email</button>
+            if (r.ok) { toast.success("Draft ready. Review it in Outreach."); router.push(`/outreach?draft=${r.id}`); } else toast.error(r.error);
+          })}><Send className="h-3.5 w-3.5" /> Draft email</button>
         </div>
       </div>
 
       {!text ? (
-        <p className="text-[14px] text-muted">{status === "pending" ? "Summary pending (Gemini unavailable). It will retry on the next run." : "No opener yet. Run Refresh now to generate one from live evidence."}</p>
+        <p className="text-[14px] text-muted">{status === "pending" ? "The summary is waiting because Gemini was unavailable. It will be written on the next refresh." : "No first line yet. Click Refresh now to write one from live data."}</p>
       ) : editing ? (
         <div>
-          <textarea className="input serif !text-[20px] !leading-snug" rows={4} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="Edit opener" />
+          <textarea className="input serif !text-[20px] !leading-snug" rows={4} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="Edit first line" />
           <div className="mt-3 flex gap-2">
             <button className="btn btn-primary" disabled={pending} onClick={() => start(async () => {
               const r = await saveOpenerEdit(companyId, draft, ids);

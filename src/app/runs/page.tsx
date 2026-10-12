@@ -33,7 +33,7 @@ export default async function RunsPage() {
         </div>
       )}
       {runs.length === 0 ? (
-        <div className="card"><EmptyState title="No runs yet." hint="Tap Refresh now on an account, or wait for Monday 6:00 IST." /></div>
+        <div className="card"><EmptyState title="No runs yet." hint="Click Refresh now on an account, or wait for the Monday 6:00 IST refresh." /></div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full min-w-[900px] text-[13px]">

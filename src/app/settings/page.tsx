@@ -1,6 +1,5 @@
 import { SettingsForm } from "@/components/settings/SettingsForm";
 import { PageHeader, SetupNotice } from "@/components/ui/States";
-import { isAdmin } from "@/lib/auth";
 import { hubspotConfigured } from "@/lib/hubspot";
 import { getSettings } from "@/lib/queries";
 import { safe } from "@/lib/safe";
@@ -22,7 +21,6 @@ export default async function SettingsPage() {
   const res = await safe(getSettings);
   if (!res.ok) return <SetupNotice error={res.error} />;
   const s = res.data;
-  const admin = await isAdmin();
   const rate = await githubRate();
   const env = (k: string) => !!process.env[k];
 
@@ -30,7 +28,7 @@ export default async function SettingsPage() {
     <div>
       <PageHeader eyebrow="Product notes, internal recipients, connections" title="Settings" />
       <SettingsForm
-        admin={admin} productNotes={s.productNotes ?? ""} allowlist={s.internalAllowlist ?? []} recipients={s.briefRecipients ?? []}
+        productNotes={s.productNotes ?? ""} allowlist={s.internalAllowlist ?? []} recipients={s.briefRecipients ?? []}
         hubspot={hubspotConfigured()} testMode={process.env.EMAIL_TEST_MODE === "true"} internalDomain={process.env.INTERNAL_EMAIL_DOMAIN ?? ""} testEmail={process.env.TEST_EMAIL ?? ""}
         sources={[
           { name: "GitHub", ok: env("GITHUB_TOKEN"), detail: rate ? `${rate.remaining}/${rate.limit} requests left · resets ${new Date(rate.reset).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "token missing or unreachable" },

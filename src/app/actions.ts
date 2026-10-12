@@ -1,10 +1,8 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { ADMIN_COOKIE, adminToken, checkPasscode, isAdmin, requireAdmin } from "@/lib/auth";
 import { gateByConfidence, makeCheckContext } from "@/lib/ai/context";
 import { setYoutubeChannelId } from "@/db/raw";
 import { answerQuestion, generateBrief, generateEmail, recheckEmail, recheckOpener, retrieveEvidence } from "@/lib/ai/generate";
@@ -15,6 +13,7 @@ import { sendInternalDraft } from "@/lib/email/send";
 import { createProperties, hubspotConfigured, listContacts, logSentEmail, pushApprovedText, syncCompanyFacts, type HsContact } from "@/lib/hubspot";
 import { queueRun } from "@/lib/pipeline";
 import { getSettings } from "@/lib/queries";
+import { createDraftFor, loadSnapshotContext } from "@/lib/outreach";
 import { factsToText } from "@/lib/compute/facts";
 import { selectForGemini, type Ref } from "@/lib/compute/evidence";
 
@@ -23,31 +22,10 @@ type R<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof Error ? e.message : String(e) });
 
-/* ---------------- admin mode ---------------- */
-
-export async function unlockAdmin(passcode: string): Promise<R> {
-  if (!checkPasscode(passcode)) return { ok: false, error: "That passcode is not right." };
-  const jar = await cookies();
-  jar.set(ADMIN_COOKIE, adminToken()!, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 12 });
-  revalidatePath("/", "layout");
-  return { ok: true };
-}
-
-export async function lockAdmin(): Promise<R> {
-  (await cookies()).delete(ADMIN_COOKIE);
-  revalidatePath("/", "layout");
-  return { ok: true };
-}
-
-export async function adminStatus() {
-  return { admin: await isAdmin(), configured: !!process.env.ADMIN_PASSCODE, open: process.env.OPEN_ACCESS === "true" };
-}
-
 /* ---------------- watchlist ---------------- */
 
 export async function addCompany(name: string, website: string): Promise<R<{ id: number; domain: string; runId?: number }>> {
   try {
-    await requireAdmin();
     const domain = normalizeDomain(website);
     if (!name.trim()) return { ok: false, error: "Add a company name." };
     if (!domain) return { ok: false, error: "That does not look like a website. Try acme.com." };
@@ -70,7 +48,6 @@ export async function addCompany(name: string, website: string): Promise<R<{ id:
 
 export async function removeCompanies(ids: number[]): Promise<R> {
   try {
-    await requireAdmin();
     const db = getDb();
     for (const id of ids) await db.update(companies).set({ active: false, removedAt: new Date() }).where(eq(companies.id, id));
     revalidatePath("/accounts"); revalidatePath("/");
@@ -82,7 +59,6 @@ export async function removeCompanies(ids: number[]): Promise<R> {
 
 export async function undoRemove(ids: number[]): Promise<R> {
   try {
-    await requireAdmin();
     const db = getDb();
     for (const id of ids) await db.update(companies).set({ active: true, removedAt: null }).where(eq(companies.id, id));
     revalidatePath("/accounts"); revalidatePath("/");
@@ -95,7 +71,6 @@ export async function undoRemove(ids: number[]): Promise<R> {
 /** Creates queued runs; the client then POSTs /api/refresh/[id]?run=... (single) or /api/refresh-all (bulk). */
 export async function startRefresh(companyId: number): Promise<R<{ runId: number }>> {
   try {
-    await requireAdmin();
     const runId = await queueRun(companyId, "manual");
     return { ok: true, runId };
   } catch (e) {
@@ -110,7 +85,6 @@ export async function saveOverrides(
   v: { githubOrg?: string; jobBoardProvider?: string; jobBoardSlug?: string; blogRssUrl?: string; youtubeQuery?: string; youtubeChannelId?: string; notes?: string },
 ): Promise<R> {
   try {
-    await requireAdmin();
     const clean = (s?: string) => (s && s.trim() ? s.trim() : null);
     const provider = clean(v.jobBoardProvider);
     if (provider && !["greenhouse", "lever", "ashby"].includes(provider)) return { ok: false, error: "Job board must be greenhouse, lever or ashby." };
@@ -133,7 +107,6 @@ export async function saveOverrides(
 
 export async function pickGithubOrg(companyId: number, login: string): Promise<R<{ runId: number }>> {
   try {
-    await requireAdmin();
     await getDb().update(companies).set({ githubOrg: login, githubMatchConfidence: "high" }).where(eq(companies.id, companyId));
     const runId = await queueRun(companyId, "manual");
     return { ok: true, runId };
@@ -144,29 +117,10 @@ export async function pickGithubOrg(companyId: number, login: string): Promise<R
 
 /* ---------------- brief context (shared by regenerate / drafts / Q&A) ---------------- */
 
-async function loadContext(companyId: number) {
-  const db = getDb();
-  const [company] = await db.select().from(companies).where(eq(companies.id, companyId));
-  const [snap] = await db.select().from(snapshots).where(eq(snapshots.companyId, companyId)).orderBy(desc(snapshots.createdAt)).limit(1);
-  if (!company || !snap) throw new Error("No snapshot yet. Run Refresh now first.");
-  const ev = await db.select().from(evidence).where(eq(evidence.snapshotId, snap.id));
-  const [brief] = await db.select().from(briefs).where(eq(briefs.snapshotId, snap.id));
-  const refs: Ref[] = ev.map((e) => ({ ref: e.ref, source: e.source as Ref["source"], kind: e.kind, title: e.title, snippet: e.snippet, url: e.url, observedAt: e.observedAt, meta: (e.meta as Record<string, unknown>) ?? undefined }));
-  const factsText = factsToText({
-    company: company.name, languages: snap.languages ?? [], infra: snap.infra, microservices: snap.microservices, activity: snap.activity,
-    confidence: snap.confidence, confidenceReason: snap.confidenceReason, changes: snap.changes ?? [], activeRepoCount: snap.activity?.activeRepos ?? 0,
-    serviceRepoCount: snap.activity?.serviceRepos ?? 0,
-    sourceNotes: Object.entries(snap.sourceStatus ?? {}).filter(([, s]) => s.state !== "ok").map(([k, s]) => `${k}: ${s.state === "failed" ? `failed (showing data since ${s.staleSince ?? "earlier"})` : "none found"}`),
-  });
-  const ctx = makeCheckContext(company.name, refs, factsText);
-  return { company, snap, refs, brief, ctx, factsText };
-}
-
 /** Opener Card → Regenerate. Re-runs Gemini + the code check on the latest snapshot's evidence. */
 export async function regenerateBrief(companyId: number): Promise<R> {
   try {
-    await requireAdmin();
-    const { company, snap, refs, ctx, factsText } = await loadContext(companyId);
+    const { company, snap, refs, ctx, factsText } = await loadSnapshotContext(companyId);
     const s = await getSettings();
     const r = await generateBrief(
       { company: company.name, facts: factsText, productNotes: s.productNotes, evidence: selectForGemini(refs).map((e) => ({ ref: e.ref, source: e.source, title: e.title, snippet: e.snippet, date: e.observedAt?.toISOString().slice(0, 10) ?? null })) },
@@ -191,8 +145,7 @@ export async function regenerateBrief(companyId: number): Promise<R> {
 /** Nikhil edits the opener; the edited text is re-checked before it can be approved. */
 export async function saveOpenerEdit(companyId: number, text: string, evidenceIds: string[]): Promise<R<{ checkStatus: string; reasons: string[] }>> {
   try {
-    await requireAdmin();
-    const { snap, ctx, company } = await loadContext(companyId);
+    const { snap, ctx, company } = await loadSnapshotContext(companyId);
     const r0 = recheckOpener(text.trim(), evidenceIds, ctx);
     const r = (() => { const g = gateByConfidence(r0.checkStatus, r0.checkReasons, snap.confidence); return { checkStatus: g.status, checkReasons: g.reasons }; })();
     await getDb().update(briefs).set({ openerText: text.trim(), openerEvidenceIds: evidenceIds, checkStatus: r.checkStatus, checkReasons: r.checkReasons }).where(eq(briefs.snapshotId, snap.id));
@@ -207,9 +160,8 @@ export async function saveOpenerEdit(companyId: number, text: string, evidenceId
 
 export async function askQuestion(companyId: number, question: string): Promise<R<{ answer: string; evidenceIds: string[]; missing?: string }>> {
   try {
-    await requireAdmin();
     if (!question.trim()) return { ok: false, error: "Ask something about this account." };
-    const { refs, ctx, company } = await loadContext(companyId);
+    const { refs, ctx, company } = await loadSnapshotContext(companyId);
     const top = retrieveEvidence(question, refs, 15);
     const a = await answerQuestion(company.name, question, top, ctx.validRefs);
     await getDb().insert(qaMessages).values({ companyId, question: question.trim(), answer: a.answer, evidenceIds: a.evidenceIds });
@@ -224,24 +176,10 @@ export async function askQuestion(companyId: number, question: string): Promise<
 
 export async function createDraft(companyId: number, recipient?: { name?: string; email?: string }): Promise<R<{ id: number }>> {
   try {
-    await requireAdmin();
-    const { company, snap, refs, brief, ctx } = await loadContext(companyId);
-    if (!brief?.openerText) return { ok: false, error: "No opener yet. Run a refresh first." };
-    if (brief.checkStatus !== "verified") return { ok: false, error: "This opener is marked Needs review, so it cannot become a draft yet. Edit it until the check passes (or regenerate it), then draft." };
-    const e = await generateEmail(
-      {
-        company: company.name, opener: brief.openerText, summary: `${brief.summaryP1 ?? ""} ${brief.summaryP2 ?? ""}`.replace(/\[E\d+\]/g, ""),
-        evidence: selectForGemini(refs, 25).map((x) => ({ ref: x.ref, source: x.source, title: x.title, snippet: x.snippet })), recipient: recipient?.name,
-      },
-      ctx,
-    );
-    const [row] = await getDb().insert(drafts).values({
-      companyId, snapshotId: snap.id, recipientName: recipient?.name ?? null, recipientEmail: recipient?.email ?? null,
-      subject: e.email.subject, body: e.email.body, evidenceIds: e.email.evidence_ids, status: "draft",
-      checkStatus: e.checkStatus, checkReasons: e.checkReasons,
-    }).returning({ id: drafts.id });
+    const r = await createDraftFor(companyId, { recipient });
+    if (!r.ok) return r;
     revalidatePath("/outreach");
-    return { ok: true, id: row.id };
+    return { ok: true, id: r.id };
   } catch (e) {
     return fail(e instanceof GeminiUnavailable ? new Error("Gemini is unavailable right now. Try again shortly.") : e);
   }
@@ -249,12 +187,11 @@ export async function createDraft(companyId: number, recipient?: { name?: string
 
 export async function regenerateDraft(draftId: number): Promise<R> {
   try {
-    await requireAdmin();
     const db = getDb();
     const [d] = await db.select().from(drafts).where(eq(drafts.id, draftId));
     if (!d) return { ok: false, error: "Draft not found." };
     if (d.status === "sent") return { ok: false, error: "This draft was already logged as sent." };
-    const { company, refs, brief, ctx } = await loadContext(d.companyId);
+    const { company, refs, brief, ctx } = await loadSnapshotContext(d.companyId);
     if (!brief?.openerText) return { ok: false, error: "No opener yet." };
     const e = await generateEmail(
       { company: company.name, opener: brief.openerText, summary: `${brief.summaryP1 ?? ""} ${brief.summaryP2 ?? ""}`.replace(/\[E\d+\]/g, ""), evidence: selectForGemini(refs, 25).map((x) => ({ ref: x.ref, source: x.source, title: x.title, snippet: x.snippet })), recipient: d.recipientName },
@@ -271,12 +208,11 @@ export async function regenerateDraft(draftId: number): Promise<R> {
 /** Editing re-runs the code check; any edit to an approved draft sends it back to Draft. */
 export async function updateDraft(draftId: number, v: { subject: string; body: string; recipientName?: string; recipientEmail?: string }): Promise<R<{ checkStatus: string; reasons: string[] }>> {
   try {
-    await requireAdmin();
     const db = getDb();
     const [d] = await db.select().from(drafts).where(eq(drafts.id, draftId));
     if (!d) return { ok: false, error: "Draft not found." };
     if (d.status === "sent") return { ok: false, error: "Already logged as sent." };
-    const { ctx } = await loadContext(d.companyId);
+    const { ctx } = await loadSnapshotContext(d.companyId);
     const r = recheckEmail({ subject: v.subject, body: v.body, evidence_ids: d.evidenceIds ?? [] }, ctx);
     const textChanged = v.subject !== d.subject || v.body !== d.body;
     await db.update(drafts).set({
@@ -294,7 +230,6 @@ export async function updateDraft(draftId: number, v: { subject: string; body: s
 /** Resend, internal only. Moves Draft → In internal review. */
 export async function sendInternally(draftId: number, to: string): Promise<R<{ deliveredTo: string; testMode: boolean }>> {
   try {
-    await requireAdmin();
     const db = getDb();
     const s = await getSettings();
     const g = guardRecipient(to, envGuardConfig(s.internalAllowlist ?? []));
@@ -317,14 +252,13 @@ export async function sendInternally(draftId: number, to: string): Promise<R<{ d
 /** THE HUMAN GATE (step 14). Blocked unless the code check passes. */
 export async function approveDraft(draftId: number): Promise<R<{ hubspot: string }>> {
   try {
-    await requireAdmin();
     const db = getDb();
     const [d] = await db.select().from(drafts).where(eq(drafts.id, draftId));
     if (!d) return { ok: false, error: "Draft not found." };
     if (d.checkStatus !== "verified") return { ok: false, error: "This draft needs review. Edit it until the check passes, then approve." };
     if (!d.subject.trim() || !d.body.trim()) return { ok: false, error: "Subject and body can't be empty." };
     // re-check against the current evidence, so a stale pass can't be approved
-    const { ctx, brief, snap, refs } = await loadContext(d.companyId);
+    const { ctx, brief, snap, refs } = await loadSnapshotContext(d.companyId);
     const rc = recheckEmail({ subject: d.subject, body: d.body, evidence_ids: d.evidenceIds ?? [] }, ctx);
     if (rc.checkStatus !== "verified") return { ok: false, error: `Check failed: ${rc.checkReasons[0]}` };
     await db.update(drafts).set({ status: "approved", approvedAt: new Date(), approvedBy: "Nikhil" }).where(eq(drafts.id, draftId));
@@ -346,7 +280,6 @@ export async function approveDraft(draftId: number): Promise<R<{ hubspot: string
 /** "Open in Gmail/Outlook". Only approved drafts. Never sends anything. */
 export async function markOpened(draftId: number): Promise<R> {
   try {
-    await requireAdmin();
     const db = getDb();
     const [d] = await db.select().from(drafts).where(eq(drafts.id, draftId));
     if (!d) return { ok: false, error: "Draft not found." };
@@ -361,7 +294,6 @@ export async function markOpened(draftId: number): Promise<R> {
 
 export async function markSent(draftId: number): Promise<R<{ hubspot: string }>> {
   try {
-    await requireAdmin();
     const db = getDb();
     const [d] = await db.select().from(drafts).where(eq(drafts.id, draftId));
     if (!d) return { ok: false, error: "Draft not found." };
@@ -376,7 +308,6 @@ export async function markSent(draftId: number): Promise<R<{ hubspot: string }>>
 }
 
 export async function loadContacts(companyId: number): Promise<HsContact[]> {
-  if (!(await isAdmin())) return []; // HubSpot contacts are private
   return listContacts(companyId);
 }
 
@@ -384,7 +315,6 @@ export async function loadContacts(companyId: number): Promise<HsContact[]> {
 
 export async function saveSettings(v: { productNotes: string; internalAllowlist: string[]; briefRecipients: string[] }): Promise<R> {
   try {
-    await requireAdmin();
     const emails = (a: string[]) => [...new Set(a.map((x) => x.trim().toLowerCase()).filter(Boolean))];
     const vals = { productNotes: v.productNotes.trim(), internalAllowlist: emails(v.internalAllowlist), briefRecipients: emails(v.briefRecipients) };
     await getDb().insert(settings).values({ id: 1, ...vals }).onConflictDoUpdate({ target: settings.id, set: vals });
@@ -397,7 +327,6 @@ export async function saveSettings(v: { productNotes: string; internalAllowlist:
 
 export async function hubspotCreateProperties(): Promise<R<{ created: string[]; existed: string[]; errors: string[] }>> {
   try {
-    await requireAdmin();
     if (!hubspotConfigured()) return { ok: false, error: "HUBSPOT_PRIVATE_APP_TOKEN is not set." };
     const r = await createProperties();
     return { ok: true, ...r };
@@ -408,7 +337,6 @@ export async function hubspotCreateProperties(): Promise<R<{ created: string[]; 
 
 export async function hubspotRetry(companyId: number): Promise<R<{ message: string }>> {
   try {
-    await requireAdmin();
     const [snap] = await getDb().select().from(snapshots).where(eq(snapshots.companyId, companyId)).orderBy(desc(snapshots.createdAt)).limit(1);
     if (!snap) return { ok: false, error: "No snapshot yet." };
     const r = await syncCompanyFacts(companyId, snap.id);
@@ -421,7 +349,6 @@ export async function hubspotRetry(companyId: number): Promise<R<{ message: stri
 
 export async function sendTestEmail(to: string): Promise<R<{ deliveredTo: string }>> {
   try {
-    await requireAdmin();
     const s = await getSettings();
     const g = guardRecipient(to, envGuardConfig(s.internalAllowlist ?? []));
     if (!g.ok) return { ok: false, error: g.error };

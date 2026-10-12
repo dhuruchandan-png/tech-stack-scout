@@ -34,7 +34,7 @@ const MS_ORDER = { strong: 4, medium: 3, some: 3, weak: 2, none: 1, unknown: 0 }
 const COLS = [
   { key: "q1", label: "Q1 · Languages" }, { key: "q2", label: "Q2 · Cloud & infra" }, { key: "ms", label: "Microservices" },
   { key: "q3", label: "Q3 · Activity" }, { key: "conf", label: "Confidence" }, { key: "fresh", label: "Freshness" },
-  { key: "opener", label: "Opener" }, { key: "hubspot", label: "HubSpot" },
+  { key: "opener", label: "First line" }, { key: "hubspot", label: "HubSpot" },
 ] as const;
 type ColKey = (typeof COLS)[number]["key"];
 
@@ -45,7 +45,7 @@ function save(key: string, v: unknown) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage blocked */ }
 }
 
-export function WatchlistTable({ rows, removed, admin, openAdd, initial }: { rows: Row[]; removed: { id: number; name: string; domain: string }[]; admin: boolean; openAdd: boolean; initial: { cloud: string; lang: string; tool: string } }) {
+export function WatchlistTable({ rows, removed, openAdd, initial }: { rows: Row[]; removed: { id: number; name: string; domain: string }[]; openAdd: boolean; initial: { cloud: string; lang: string; tool: string } }) {
   const router = useRouter();
   const { refresh, refreshMany } = useRuns();
   const [filters, setFilters] = useState<Filters>({ ...EMPTY, ...initial });
@@ -122,7 +122,6 @@ export function WatchlistTable({ rows, removed, admin, openAdd, initial }: { row
     });
 
   const confirmRemove = (ids: number[]) => {
-    if (!admin) { toast.error("Admin mode required. Unlock with the lock icon (top right)."); return; }
     if (window.confirm(`Remove ${ids.length} ${ids.length === 1 ? "company" : "companies"} from the watchlist? You can undo for 30 days.`)) doRemove(ids);
   };
 
@@ -142,7 +141,7 @@ export function WatchlistTable({ rows, removed, admin, openAdd, initial }: { row
     <div>
       <PageHeader eyebrow={`${rows.length} accounts · live data`} title="Watchlist">
         <button className="btn" onClick={() => refreshMany()} disabled={!rows.length}><RefreshCw className="h-3.5 w-3.5" /> Refresh all</button>
-        <button className="btn btn-primary" onClick={() => (admin ? setDrawer(true) : toast.error("Admin mode required. Unlock with the lock icon (top right)."))}><Plus className="h-4 w-4" /> Add company</button>
+        <button className="btn btn-primary" onClick={() => setDrawer(true)}><Plus className="h-4 w-4" /> Add company</button>
       </PageHeader>
 
       {/* toolbar */}
@@ -227,7 +226,7 @@ export function WatchlistTable({ rows, removed, admin, openAdd, initial }: { row
                   {show("q3") && <Th label="Q3 · Activity" k="activity" />}
                   {show("conf") && <Th label="Confidence" k="confidence" />}
                   {show("fresh") && <Th label="Freshness" k="freshness" />}
-                  {show("opener") && <Th label="Opener" />}
+                  {show("opener") && <Th label="First line" />}
                   {show("hubspot") && <Th label="HubSpot" />}
                   <th className="w-10" />
                 </tr>

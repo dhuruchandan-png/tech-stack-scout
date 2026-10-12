@@ -113,7 +113,7 @@ export async function runRefresh(companyId: number, trigger: Trigger, runId?: nu
       if (r.ok) await logStep(rid, step, "ok", describe(r.data), s);
       else if (r.status === "not_found") await logStep(rid, step, "skipped", "not found. Add an override in Sources & matching", s);
       else if (r.status === "skipped") await logStep(rid, step, "skipped", r.error ?? "not configured", s);
-      else await logStep(rid, step, "fail", r.error ?? "failed; keeping last week's data", s);
+      else await logStep(rid, step, "fail", r.error ?? "failed; keeping the earlier data", s);
       return r;
     };
 

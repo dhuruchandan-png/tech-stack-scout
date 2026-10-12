@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/cron";
 import { callTheseFirst, getAccounts, getSettings } from "@/lib/queries";
 import { envGuardConfig, guardRecipient } from "@/lib/email/guard";
 import { sendMondayBrief } from "@/lib/email/send";
@@ -9,8 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Mondays 8:00 IST (30 2 * * 1 UTC). Internal only: goes to the brief recipients (allowlisted) or NIKHIL_EMAIL. */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!cronAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const accts = await getAccounts();
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   for (const a of accts) {
     if (a.snapshot && freshnessOf(a.snapshot.createdAt).level === "stale") problems.push(`${a.company.name}: data is stale`);
     for (const [src, st] of Object.entries(a.snapshot?.sourceStatus ?? {})) if (st.state === "failed") problems.push(`${a.company.name}: ${src} failed${st.staleSince ? ` (stale since ${st.staleSince})` : ""}`);
-    if (a.brief?.checkStatus === "needs_review") problems.push(`${a.company.name}: opener needs review`);
+    if (a.brief?.checkStatus === "needs_review") problems.push(`${a.company.name}: first line needs review`);
   }
 
   const recipients = [...new Set([...(s.briefRecipients ?? []), ...(process.env.NIKHIL_EMAIL ? [process.env.NIKHIL_EMAIL] : [])])];

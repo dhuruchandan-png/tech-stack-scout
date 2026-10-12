@@ -54,16 +54,8 @@ test("command palette opens with Ctrl+K", async ({ page }) => {
   await expect(page.getByPlaceholder(/Jump to an account/)).toBeVisible();
 });
 
-// Skipped in open-access mode (no ADMIN_PASSCODE). Run with E2E_EXPECT_LOCKED=1 against a locked deployment.
-test("actions are locked without admin mode", async ({ request }) => {
-  test.skip(!process.env.E2E_EXPECT_LOCKED, "deployment is in open-access mode");
-  const r = await request.post("/api/refresh/1");
-  expect(r.status()).toBe(401);
-  const all = await request.post("/api/refresh-all");
-  expect(all.status()).toBe(401);
-});
-
-test("cron endpoints reject requests without the secret", async ({ request }) => {
+test("cron endpoints reject a wrong secret when CRON_SECRET is set", async ({ request }) => {
+  test.skip(!process.env.E2E_EXPECT_CRON_SECRET, "CRON_SECRET not set on this deployment");
   expect((await request.get("/api/cron/weekly-refresh")).status()).toBe(401);
   expect((await request.get("/api/cron/monday-brief")).status()).toBe(401);
 });

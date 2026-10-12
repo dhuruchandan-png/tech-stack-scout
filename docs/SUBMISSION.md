@@ -4,7 +4,7 @@
 
 | # | Item | Where | Weight |
 |---|---|---|---|
-| 1 | **Working public URL** | https://tech-stack-scout-six.vercel.app (no login needed to view; actions are locked behind the Admin passcode, checked on the server) | 10% |
+| 1 | **Working public URL** | https://tech-stack-scout-six.vercel.app (open to anyone with the link, no login) | 10% |
 | 2 | **GitHub repository** | https://github.com/dhuruchandan-png/tech-stack-scout | Backend and build quality 25% |
 | 3 | **Components Map** | `docs/Tech_Stack_Scout_Components_Map.png` (also shown at `/how-it-works` and at `/components-map.png`) | 10% |
 | 4 | **Demo video (2–3 min)** | Record with `docs/DEMO_SCRIPT.md` | 5% |
@@ -58,7 +58,7 @@ Note for the viva: the brief says **Supabase**. We used **Neon** (also Postgres)
 - GitHub org matching is by domain and name; a wrong match can be corrected on the account's *Sources & matching* tab.
 - Languages reflect public code only, which can understate private-heavy companies.
 - Very large orgs are sampled (top 40–50 most recently pushed repos, 15 file-tree scans).
-- Open-access mode means anyone with the URL can click actions. Set `ADMIN_PASSCODE` in Vercel to lock them.
+- The app is open by design (the professor needs to open it), so anyone with the URL can click actions. Nothing can reach a prospect: Nikhil sends every email himself.
 
 ## Extra tools you may need
 
@@ -67,8 +67,7 @@ Note for the viva: the brief says **Supabase**. We used **Neon** (also Postgres)
 | Record the 2–3 minute demo video | QuickTime Player (Mac: File → New Screen Recording) or Loom | Yes, for the video |
 | Run tests / typecheck locally | Node.js 20+ (`npm install`, `npm test`) | Optional. The repo deploys without it |
 | Email the Monday brief to a real inbox | Resend account; with no verified domain it only sends to your own signup email | Optional (internal email only) |
-| Schedule the weekly job | `CRON_SECRET` in Vercel (a long random string) | Yes, or the Monday cron returns 401 |
-| Unlock actions | `ADMIN_PASSCODE` in Vercel (or `OPEN_ACCESS=true` for a no-login demo) | Yes. Without either, the app is read-only |
+| Protect the weekly job | `CRON_SECRET` in Vercel (a long random string) | Optional. If unset, the cron endpoints are open |
 
 ## Final checklist before submitting
 

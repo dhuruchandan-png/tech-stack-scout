@@ -10,7 +10,7 @@ import type { GithubCandidate } from "@/db/schema";
 import { cn } from "@/lib/util";
 
 type Props = {
-  companyId: number; admin: boolean;
+  companyId: number;
   org: string | null; orgConfidence: string | null; candidates: GithubCandidate[];
   jobProvider: string | null; jobSlug: string | null; blogRss: string | null; youtubeQuery: string | null; youtubeChannelId: string | null; notes: string | null;
   status: Record<string, { state: string; staleSince?: string; detail?: string }>;
@@ -26,7 +26,6 @@ export function SourcesTab(p: Props) {
   const [chooser, setChooser] = useState(false);
   const router = useRouter();
   const { refresh, openRun } = useRuns();
-  const guard = () => { if (!p.admin) { toast.error("Admin mode required. Unlock with the lock icon (top right)."); return false; } return true; };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -65,7 +64,7 @@ export function SourcesTab(p: Props) {
                     <div className="font-semibold">{c.login} <span className="chip ml-1 !py-0 text-[10.5px]">{c.confidence}</span></div>
                     <div className="truncate text-muted">{c.description || c.website || "No description"}{c.repoCount != null && ` · ${c.repoCount} repos`}</div>
                   </div>
-                  <button className="btn h-8" disabled={pending || c.login === p.org} onClick={() => guard() && start(async () => {
+                  <button className="btn h-8" disabled={pending || c.login === p.org} onClick={() => start(async () => {
                     const r = await pickGithubOrg(p.companyId, c.login);
                     if (!r.ok) { toast.error(r.error); return; }
                     toast.success(`Using ${c.login}. Refreshing now.`);
@@ -100,7 +99,7 @@ export function SourcesTab(p: Props) {
           </div>
         </div>
         <div className="mt-4 flex gap-2">
-          <button className="btn btn-primary" disabled={pending} onClick={() => guard() && start(async () => {
+          <button className="btn btn-primary" disabled={pending} onClick={() => start(async () => {
             const r = await saveOverrides(p.companyId, v);
             if (!r.ok) { toast.error(r.error); return; }
             toast.success("Overrides saved.", { action: { label: "Refresh now", onClick: () => refresh(p.companyId) } });

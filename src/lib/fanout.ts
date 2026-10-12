@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { queueRun, type Trigger } from "@/lib/pipeline";
+import { prepareReadyDrafts } from "@/lib/outreach";
 import { reapStuckRuns } from "@/lib/queries";
 import { mapLimit } from "@/lib/util";
 
@@ -26,7 +27,7 @@ export async function fanout(pairs: { companyId: number; runId: number }[], conc
     try {
       await fetch(`${base}/api/refresh/${p.companyId}?run=${p.runId}&wait=1`, {
         method: "POST",
-        // With CRON_SECRET set the header authorises the call; in open-access mode (no ADMIN_PASSCODE) it is not needed.
+        // With CRON_SECRET set the header authorises the call; without it the endpoint is open.
         headers: process.env.CRON_SECRET ? { authorization: `Bearer ${process.env.CRON_SECRET}` } : {},
         signal: AbortSignal.timeout(75_000),
       });
@@ -34,4 +35,10 @@ export async function fanout(pairs: { companyId: number; runId: number }[], conc
       // the run row records its own status; a timeout here just means it will show as running/failed on /runs
     }
   });
+  // every full refresh ends by keeping a finished draft ready for the top accounts (nothing is sent)
+  try {
+    await prepareReadyDrafts({ limit: 5 });
+  } catch {
+    /* drafts can be prepared later from the Outreach page */
+  }
 }

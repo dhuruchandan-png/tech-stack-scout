@@ -50,7 +50,7 @@ function collapse(steps: Step[]): Step[] {
   return order.map((k) => latest.get(k)!);
 }
 
-export function RunConsoleProvider({ children, admin }: { children: React.ReactNode; admin: boolean }) {
+export function RunConsoleProvider({ children }: { children: React.ReactNode }) {
   const [runId, setRunId] = useState<number | null>(null);
   const router = useRouter();
 
@@ -58,25 +58,20 @@ export function RunConsoleProvider({ children, admin }: { children: React.ReactN
 
   const refresh = useCallback(
     async (companyId: number, name?: string) => {
-      if (!admin) {
-        toast.error("Admin mode required. Unlock with the lock icon (top right).");
-        return;
-      }
       const r = await startRefresh(companyId);
       if (!r.ok) { toast.error(r.error); return; }
       setRunId(r.runId);
       fetch(`/api/refresh/${companyId}?run=${r.runId}`, { method: "POST" }).catch(() => toast.error(`Could not start the refresh${name ? ` for ${name}` : ""}.`));
     },
-    [admin],
+    [],
   );
 
   const refreshMany = useCallback(async (ids?: number[]) => {
-    if (!admin) { toast.error("Admin mode required. Unlock with the lock icon (top right)."); return; }
     const res = await fetch("/api/refresh-all", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids }) });
     if (!res.ok) { toast.error("Could not queue the refresh."); return; }
     const j = (await res.json()) as { queued: number };
     toast.success(`Queued ${j.queued} account${j.queued === 1 ? "" : "s"}. Running 3 at a time.`, { action: { label: "Open Runs", onClick: () => router.push("/runs") } });
-  }, [admin, router]);
+  }, [router]);
   const refreshAll = useCallback(() => refreshMany(), [refreshMany]);
 
   const value = useMemo(() => ({ openRun, refresh, refreshAll, refreshMany }), [openRun, refresh, refreshAll, refreshMany]);
@@ -165,7 +160,7 @@ function ConsolePanel({ runId, onClose }: { runId: number | null; onClose: () =>
             {finished && data && (
               <footer className="border-t border-line px-5 py-3 text-[12.5px] text-muted">
                 {data.run.status === "failed" && <div className="text-alert">Run failed: {data.run.error}</div>}
-                {data.run.status === "partial" && <div className="text-change">Partial run: a source failed or Gemini was unavailable. Last week&apos;s data is shown where needed.</div>}
+                {data.run.status === "partial" && <div className="text-change">Partial run: a source failed or Gemini was unavailable. Earlier data is shown where needed.</div>}
                 {data.run.status === "done" && <div className="text-verified">Run complete. Evidence checked and snapshot saved.</div>}
                 {data.run.costUsd != null && <div className="mono mt-1 text-faint">Gemini · {((data.run.tokens ?? 0) / 1000).toFixed(1)}k tokens · ${data.run.costUsd.toFixed(3)}</div>}
               </footer>

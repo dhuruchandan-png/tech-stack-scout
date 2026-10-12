@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Lock, Moon, Search, Sun, Unlock } from "lucide-react";
-import { toast } from "sonner";
-import { lockAdmin, unlockAdmin } from "@/app/actions";
+import { usePathname } from "next/navigation";
+import { Moon, Search, Sun } from "lucide-react";
 import { useRuns } from "@/components/run/RunConsole";
 import { NAV, Logo } from "./Sidebar";
 import { cn } from "@/lib/util";
@@ -28,52 +26,7 @@ export function ThemeToggle() {
   );
 }
 
-function AdminLock({ admin, configured, open: openAccess }: { admin: boolean; configured: boolean; open: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [pass, setPass] = useState("");
-  const [pending, start] = useTransition();
-  const router = useRouter();
-
-  const submit = () =>
-    start(async () => {
-      const r = await unlockAdmin(pass);
-      if (r.ok) { toast.success("Admin mode on. Actions are unlocked for 12 hours."); setOpen(false); setPass(""); router.refresh(); }
-      else toast.error(r.error);
-    });
-
-  if (openAccess) {
-    return (
-      <span className="chip h-9 border-change/40 text-change" title="OPEN_ACCESS=true is set, so every visitor can use all actions. Remove it in Vercel to lock the app.">
-        <Unlock className="h-4 w-4" /> <span className="hidden sm:inline">Open access</span>
-      </span>
-    );
-  }
-  if (admin) {
-    return (
-      <button className="btn h-9 border-verified/40 text-verified" onClick={() => start(async () => { await lockAdmin(); toast("Locked."); router.refresh(); })} title="Click to lock again">
-        <Unlock className="h-4 w-4" /> <span className="hidden sm:inline">Unlocked</span>
-      </button>
-    );
-  }
-  return (
-    <div className="relative">
-      <button className="btn h-9" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Unlock admin mode">
-        <Lock className="h-4 w-4" /> <span className="hidden sm:inline">Locked</span>
-      </button>
-      {open && (
-        <div className="card absolute right-0 top-11 z-50 w-72 p-4">
-          <div className="label mb-2">Locked</div>
-          <p className="mb-3 text-[12.5px] text-muted">Everything is viewable without login. Enter the passcode to refresh, add or remove companies, approve and send.</p>
-          {!configured && <p className="mb-3 text-[12px] text-change">ADMIN_PASSCODE is not set on the server, so actions are disabled. Set it in Vercel and redeploy.</p>}
-          <input className="input" type="password" placeholder="Passcode" value={pass} autoFocus onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} aria-label="Admin passcode" />
-          <button className="btn btn-primary mt-3 w-full" onClick={submit} disabled={pending || !pass}>Unlock</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function TopBar({ admin, adminConfigured, open }: { admin: boolean; adminConfigured: boolean; open: boolean }) {
+export function TopBar() {
   const path = usePathname();
   const { refreshAll } = useRuns();
   const seg = path.split("/").filter(Boolean);
@@ -96,9 +49,8 @@ export function TopBar({ admin, adminConfigured, open }: { admin: boolean; admin
             <Search className="h-3.5 w-3.5" /> Search accounts, run commands… <span className="kbd ml-auto">⌘K</span>
           </button>
           <button className="btn h-9 w-9 p-0 lg:hidden" onClick={() => window.dispatchEvent(new Event("tss:palette"))} aria-label="Search"><Search className="h-4 w-4" /></button>
-          {admin && <button className="btn hidden h-9 sm:inline-flex" onClick={refreshAll}>Refresh all</button>}
+          <button className="btn hidden h-9 sm:inline-flex" onClick={refreshAll}>Refresh all</button>
           <ThemeToggle />
-          <AdminLock admin={admin} configured={adminConfigured} open={open} />
         </div>
       </div>
       <nav className="flex gap-1 overflow-x-auto border-t border-line px-3 py-1.5 md:hidden" aria-label="Mobile">

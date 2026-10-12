@@ -107,9 +107,9 @@ export default async function TodayPage() {
 
           <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section className="card p-5" aria-labelledby="changed">
-              <h2 id="changed" className="label mb-3">What changed this week</h2>
+              <h2 id="changed" className="label mb-3">What changed since the last refresh</h2>
               {feed.length === 0 ? (
-                <p className="text-[13px] text-muted">Nothing material yet. Changes appear after the second weekly snapshot.</p>
+                <p className="text-[13px] text-muted">Nothing notable yet. Changes show up after the next refresh.</p>
               ) : (
                 <DiffView
                   changes={feed.map((f) => f.c)}
@@ -167,7 +167,7 @@ export default async function TodayPage() {
                 </div>
                 {needsReview.length > 0 && (
                   <div>
-                    <div className="label mb-1.5">Openers needing review</div>
+                    <div className="label mb-1.5">First lines needing review</div>
                     <ul className="space-y-1.5">
                       {needsReview.map((a) => (
                         <li key={a.company.id}><Link href={`/accounts/${a.company.domain}`} className="text-change hover:underline">{a.company.name}</Link></li>

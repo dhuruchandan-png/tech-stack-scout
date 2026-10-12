@@ -52,19 +52,19 @@ export default async function HowItWorks() {
   const steps: { n: number; title: string; what: string; who: Who; href?: string; live?: string }[] = [
     { n: 1, title: "Nikhil edits the watchlist", what: "He adds or removes a company (name + website) on the Watchlist page, or directly in the database table. No code.", who: "human", href: "/accounts", live: `${accts.length} companies on the watchlist` },
     { n: 2, title: "One row per company is stored", what: "The `companies` table holds the name, a cleaned domain, and optional overrides (GitHub org, job-board slug, blog feed, YouTube query). Duplicate domains are blocked.", who: "code" },
-    { n: 3, title: "Refresh is triggered", what: "Every Monday 6:00 IST a Vercel cron queues every active company (3a). Nikhil can also tap Refresh now before any call (3b). One company is processed per request, so nothing times out.", who: "code", href: "/runs", live: `Last weekly run: ${health.lastWeeklyRun ? new Date(health.lastWeeklyRun).toLocaleDateString("en-GB") : "not yet"}` },
+    { n: 3, title: "Refresh is triggered", what: "Every Monday 6:00 IST a Vercel cron queues every active company (3a). Nikhil can also click Refresh now before any call (3b). One company is processed per request, so nothing times out.", who: "code", href: "/runs", live: `Last weekly run: ${health.lastWeeklyRun ? new Date(health.lastWeeklyRun).toLocaleDateString("en-GB") : "not yet"}` },
     { n: 4, title: "Match the sources", what: "Uses the overrides, otherwise finds the company's GitHub org, job board and blog feed from its domain. Each match gets a confidence level, and Nikhil can correct it.", who: "code", href: sample ? `/accounts/${sample.company.domain}?tab=sources` : undefined },
     { n: 5, title: "Fetch live public data", what: "GitHub (repos, languages, commits, infra files), job boards (Greenhouse / Lever / Ashby), engineering blog RSS, YouTube talks (own channel or tech-titled videos only; earnings, memes and gaming are rejected), Hacker News.", who: "code", live: `${fmtInt(activeRepos)} active repos · ${fmtInt(roles)} open eng roles · ${bySource("blog")} posts · ${bySource("youtube")} talks · ${bySource("hn")} HN stories` },
     { n: 6, title: "Load last week's snapshot", what: "So the system can say what changed since last week.", who: "code" },
     { n: 7, title: "Build the evidence pack", what: "Every signal becomes an evidence item with an id (E1, E2…), source, link, title, snippet and date. This is what makes every claim checkable.", who: "code", live: `${fmtInt(ev.length)} evidence items` },
     { n: 8, title: "Code answers Q1, Q2, Q3", what: "Languages by code size (markup and docs repos excluded), cloud and infra split into \"runs on\" and \"integrates with\" with a strength, microservices from deployable services, commits for two 30-day windows with bots removed, engineering roles by title, confidence, and what changed. Plain code, not AI, so the numbers are exact.", who: "code", live: `${withCloud} accounts with a visible cloud · ${strongMs} with a strong microservices signal · ${changed} changed vs last week` },
-    { n: 9, title: "Gemini writes the summary and first line", what: "Gemini Flash reads only the evidence pack and the computed facts, and writes two paragraphs plus one suggested opening line, citing evidence ids like [E12].", who: "ai", live: `${openers} openers drafted · model ${MODEL()} · $${health.costWeek.toFixed(2)} this week` },
+    { n: 9, title: "Gemini writes the summary and first line", what: "Gemini Flash reads only the evidence pack and the computed facts, and writes two paragraphs plus one suggested opening line, citing evidence ids like [E12].", who: "ai", live: `${openers} first lines written · model ${MODEL()} · $${health.costWeek.toFixed(2)} this week` },
     { n: 10, title: "Code checks the AI", what: "Every sentence must cite the right kind of evidence (a commits claim cites an activity item, a cloud claim an infra or jobs item), every number must appear in the cited item, and the opener must name a real repo, tool or role from a cited title and tie it to a specific pain, with no flattery. One automatic retry, then \"Needs review\". Needs-review text cannot be approved, and a Low-confidence account can never be Verified.", who: "code", live: `${verified} verified · ${needsReview} needs review` },
-    { n: 11, title: "Save this week's snapshot", what: "Signals, evidence, summary, opener, confidence and run log are stored. If a source failed, last week's data is kept and marked \"Stale since…\".", who: "code" },
+    { n: 11, title: "Save the new snapshot", what: "Signals, sources, summary, first line, confidence and run log are stored. If a source failed, last week's data is kept and marked \"Stale since…\".", who: "code" },
     { n: 12, title: "The account page shows it all", what: "Q1, Q2, Q3, the summary, the first line, what changed, with a source behind every claim. Also Call these first, Radar, One-pager.", who: "code", href: sample ? `/accounts/${sample.company.domain}` : "/accounts", live: `${withSnap.length}/${accts.length} accounts have data` },
     { n: 13, title: "HubSpot gets the facts", what: "After every refresh the code-calculated facts sync to the company record. AI-written text goes to HubSpot only after Nikhil approves it, and sent emails are logged.", who: "code", live: `${health.synced}/${accts.length} companies synced` },
-    { n: 14, title: "Human gate: Nikhil approves", what: "He can Edit, Regenerate, share internally, then Approve. Only approved drafts can move on.", who: "human", href: "/outreach", live: `${drafts.length} drafts` },
-    { n: 15, title: "He sends from his own inbox", what: "The approved email opens in his own Gmail or Outlook. He presses Send himself, then marks it sent. The app never emails a prospect; Resend only sends internal drafts and the Monday brief.", who: "human", live: `${sentDrafts} logged as sent` },
+    { n: 14, title: "Nikhil reviews and approves the ready draft", what: "After every full refresh, Scout keeps a finished, checked draft ready for each top account. Nikhil reads it, edits or rewrites it if he wants, can share it with his team, then approves it. Only a draft that passes the check can be approved.", who: "human", href: "/outreach", live: `${drafts.length} drafts · ${drafts.filter((d) => d.status === "draft").length} ready to review` },
+    { n: 15, title: "He sends it himself, from his own inbox", what: "One click opens the approved draft in his own Gmail or Outlook. He presses Send himself, then clicks \"I sent it\". The app never emails a prospect; Resend only sends drafts to his own team and the Monday brief.", who: "human", live: `${sentDrafts} logged as sent` },
   ];
 
   const reqs: { id: string; need: string; how: string; proof: string; href?: string }[] = [
@@ -74,7 +74,7 @@ export default async function HowItWorks() {
     { id: "R4", need: "Q3: how actively their team is building", how: "Commits (latest 30 days vs the 30 before, bots removed), repos pushed, releases, engineering roles (of all roles), posts, talks, plus a 13-week heat strip.", proof: `${fmtInt(roles)} open eng roles across the watchlist`, href: "/accounts" },
     { id: "R5", need: "Refreshed weekly, so stale research never follows him into a call", how: "Vercel cron every Monday 6:00 IST. Every account shows a freshness pill and flags any stale source.", proof: "Cron: 30 0 * * 1 (UTC) · see the Runs page", href: "/runs" },
     { id: "R6", need: "Gemini writes a two-paragraph engineering context summary per company", how: "Gemini Flash, evidence only, every sentence cited, then verified by code.", proof: `${withSnap.filter((a) => a.brief?.summaryP1).length} summaries written`, href: sample ? `/accounts/${sample.company.domain}` : undefined },
-    { id: "R7", need: "Gemini suggests a first outreach line tied to something specific, not a template", how: "The opener must name a real repo, tool, role or post from a cited item and tie it to one specific pain (CI time, tests, builds, local environments). Flattery, banned phrases and placeholders are rejected.", proof: `${openers} openers · ${verified} verified by the code check`, href: "/" },
+    { id: "R7", need: "Gemini suggests a first outreach line tied to something specific, not a template", how: "The first line must name a real repo, tool, role or post from a cited item and tie it to one specific pain (CI time, tests, builds, local environments). Flattery, banned phrases and placeholders are rejected.", proof: `${openers} first lines · ${verified} verified by the code check`, href: "/" },
     { id: "R8", need: "He can add or remove companies without touching code", how: "Add/remove on the Watchlist page (soft delete with Undo), or edit the `companies` table in the database.", proof: `${accts.length} companies, all added without code`, href: "/accounts?add=1" },
   ];
 
@@ -116,6 +116,14 @@ export default async function HowItWorks() {
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-alert" />
           <p><b>The Cut: nothing reaches a prospect without Nikhil.</b> No auto-send, no scheduling, no sequences, no prospect email through Resend, and no AI-written text in HubSpot before he approves it. The tool drafts; Nikhil approves and sends from his own inbox.</p>
         </div>
+      </section>
+
+      <section className="card mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 p-4 text-[13px]" aria-label="How to read the brief">
+        <span className="label">How to read an account page</span>
+        <span><span className="receipt">E12</span> a source: hover it to see where the claim comes from, click to open it</span>
+        <span><span className="chip border-signal/40 bg-signal/10 text-signal">Code</span> calculated by code from public data, not by AI</span>
+        <span><span className="chip border-ai/40 bg-ai/10 text-ai">Gemini Flash</span> written by AI, then checked by code</span>
+        <span><span className="chip border-change/40 bg-change/10 text-change">Needs review</span> the check found a problem, so it cannot be approved yet</span>
       </section>
 
       {/* ---- 15 steps ---- */}
@@ -179,7 +187,7 @@ export default async function HowItWorks() {
           {[
             ["Live external data", `${fmtInt(ev.length)} evidence items from live sources: GitHub ${bySource("github")}, jobs ${bySource("jobs")}, blog ${bySource("blog")}, talks ${bySource("youtube")}, Hacker News ${bySource("hn")}.`],
             ["All AI is Gemini Flash", `One file talks to a model (src/lib/ai/gemini.ts), and only to Gemini Flash. Current model: ${MODEL()}. No Claude API anywhere.`],
-            ["Deployed on Vercel", "Public URL, no login needed to view. Actions (refresh, approve, send, HubSpot) need the passcode, checked on the server. Weekly cron configured in vercel.json."],
+            ["Deployed on Vercel", "Public URL, open to anyone with the link. No login. The weekly refresh is set up in vercel.json."],
             ["Works with data at submission", `${withSnap.length} of ${accts.length} accounts already have a full brief.`],
           ].map(([t, d]) => (
             <div key={t} className="card p-4"><div className="flex items-center gap-2 text-[14px] font-semibold"><Check className="h-4 w-4 text-verified" />{t}</div><p className="mt-1.5 text-[12.5px] text-muted">{d}</p></div>

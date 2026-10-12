@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { render } from "@react-email/render";
 import { getDb, schema } from "@/db";
 import { getSettings } from "@/lib/queries";
+import { cleanKey } from "@/lib/util";
 import { canDeliver, envGuardConfig } from "./guard";
 import InternalDraftEmail from "@/emails/InternalDraft";
 import MondayBriefEmail, { type BriefItem } from "@/emails/MondayBrief";
@@ -14,7 +15,7 @@ type Sent = { ok: true; id: string } | { ok: false; error: string };
  * prospects can never be reached, even by a bug in a caller.
  */
 export async function sendRaw(args: { to: string; subject: string; html: string }): Promise<Sent> {
-  const key = process.env.RESEND_API_KEY;
+  const key = cleanKey(process.env.RESEND_API_KEY);
   if (!key) return { ok: false, error: "RESEND_API_KEY is not set." };
   const s = await getSettings();
   if (process.env.EMAIL_TEST_MODE === "true" && !process.env.TEST_EMAIL) {

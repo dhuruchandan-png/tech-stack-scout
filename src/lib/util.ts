@@ -72,3 +72,6 @@ export function cn(...c: (string | false | null | undefined)[]) {
 }
 
 export const fmtInt = (n: number) => new Intl.NumberFormat("en-US").format(n);
+
+/** An API key from the environment with every invisible or non-ASCII character removed (pasted keys often carry a stray U+2028 or newline that breaks HTTP headers). */
+export const cleanKey = (v: string | undefined): string | undefined => (v ? v.replace(/[^\x21-\x7e]/g, "") : v);

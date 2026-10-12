@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { pct } from "@/lib/compute/languages";
+import { cleanKey } from "@/lib/util";
 
 const { companies, snapshots, hubspotSync } = schema;
 const BASE = "https://api.hubapi.com";
@@ -13,7 +14,7 @@ export type SyncResult = { status: "synced" | "failed" | "skipped"; message: str
 async function hs<T = unknown>(path: string, method = "GET", body?: unknown): Promise<{ ok: boolean; status: number; data: T }> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${process.env.HUBSPOT_PRIVATE_APP_TOKEN}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${cleanKey(process.env.HUBSPOT_PRIVATE_APP_TOKEN)}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
